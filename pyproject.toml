@@ -7,7 +7,7 @@ name = "candidate-vetting"
 version = "0.1.0"
 description = "Target and Observation Manager App for candidate vetting"
 readme = "README.md"
-license = "LICENSE"
+license = {file = "LICENSE"}
 requires-python = ">=3.10,<3.13"
 authors = [
     {name = "TROVE Team"}
