@@ -13,11 +13,6 @@ from scipy.integrate import trapezoid
 
 from astropy.utils.introspection import minversion
 
-if minversion(np, "2.0.0"):
-    np_trapz_fn = np.trapezoid
-else:
-    np_trapz_fn = np.trapz  # np.trapz is deprecated in numpy >2.0.0
-
 import warnings
 
 from astropy.coordinates import SkyCoord
@@ -29,31 +24,70 @@ from sqlalchemy.orm import Session
 
 from django.conf import settings
 
-cosmo = settings.COSMO
-
-from tom_targets.models import BaseTarget as Target
-from tom_targets.models import TargetExtra
+from trove_mpc import Transient
+from tom_targets.models import Target, TargetExtra
+from .models import ScoreFactor
 from custom_code.healpix_utils import SaTarget
-from tom_nonlocalizedevents.models import EventLocalization, NonLocalizedEvent
-from tom_nonlocalizedevents.healpix_utils import sa_engine, SaSkymapTile
+from tom_nonlocalizedevents.models import (
+    # EventCandidate,
+    EventLocalization,
+    # SkymapTile,
+    NonLocalizedEvent,
+)
+from tom_nonlocalizedevents.healpix_utils import (
+    sa_engine,
+    SaSkymapTile,
+    # uniq_to_bigintrange,
+    # update_all_credible_region_percents_for_candidates
+)
+from tom_dataproducts.models import ReducedDatum
+
 from candidate_vetting.public_catalogs.static_catalogs import (
-    DesiSpec,
+    # DesiSpec,
+    Cosmicflows4,
     GladePlus,
     Gwgc,
-    Hecate,
-    LsDr10,
+    Hecate1,
+    Hecate2,
+    LsDr9North,
+    LsDr10South,
     Ps1Galaxy,
     Sdss12Photoz,
     AsassnVariableStar,
     Gaiadr3Variable,
+    ZtfVarStar,
     Ps1PointSource,
     Milliquas,
-    ExtendedVirgoClusterCatalog,
+    NedLvs,
+    # TwoMass,
+    DesiDr1,
+)
+from candidate_vetting.public_catalogs.dynamic_catalogs import UserGalaxy
+from candidate_vetting.models import (
+    Cosmicflows4TargetMatch,
+    GladePlusTargetMatch,
+    GwgcTargetMatch,
+    Hecate1TargetMatch,
+    Hecate2TargetMatch,
+    LsDr9NorthTargetMatch,
+    LsDr10SouthTargetMatch,
+    Ps1GalaxyTargetMatch,
+    Sdss12PhotozTargetMatch,
+    NedLvsTargetMatch,
+    DesiDr1TargetMatch,
+    UserGalaxyTargetMatch,
 )
 
+if minversion(np, "2.0.0"):
+    np_trapz_fn = np.trapezoid
+else:
+    np_trapz_fn = np.trapz  # np.trapz is deprecated in numpy >2.0.0
+
+cosmo = settings.COSMO
 logger = logging.getLogger(__name__)
 
 HOST_DF_COLMAP = {
+    "trove_uniq": "troveID",
     "name": "ID",
     "pcc": "PCC",
     "offset": "Offset",
@@ -66,12 +100,18 @@ HOST_DF_COLMAP = {
     "z_type": "z_type",
     "default_mag": "Mags",
     "catalog": "Source",
+    "submitter": "Submitter",
 }
 HOST_DF_COLMAP_INVERSE = {v: k for k, v in HOST_DF_COLMAP.items()}
 
+# Host, point source, and AGN association radii
+HOST_ASSOC_RADIUS = 5 * 60  # 5 arcmin = 300 arcsec, as used in Franz+25 and Vieira+26
+PS_ASSOC_RADIUS = 2  # 2 arcsec, as used in Franz+25 and Vieira+26
+AGN_ASSOC_RADIUS = 2  # 2 arcsec, as used in Franz+25 and Vieira+26
+
 # After we order the dataframe by the Pcc score, remove any host matches with a greater
 # Pcc score than this
-PCC_THRESHOLD = 0.80  # this is the value used in Rastinejad+2022
+PCC_THRESHOLD = 0.15  # this is the value used in Rastinejad+2022
 
 # upper / lower bounds on distance for computing normal / asymmetric Gaussian
 # distributions
@@ -84,19 +124,36 @@ D_LIM_UPPER = 1e4  # 10,000 Mpc
 #    catalog is preferred over a general redshift catalog
 # 2) Does this catalog have spec-z's or photo-z's? A spec-z catalog is preferred.
 GALAXY_CATALOGS = [
+    UserGalaxy,
     GladePlus,
     Gwgc,
-    Hecate,
-    # DesiDr1,
-    DesiSpec,  # this duplicates with DESI DR1 (which also includes the EDR data)
-    # NedLvs,
-    LsDr10,
+    Hecate2,
+    DesiDr1,
+    NedLvs,
+    Cosmicflows4,
+    LsDr9North,
+    LsDr10South,
     Ps1Galaxy,
     Sdss12Photoz,
-    ExtendedVirgoClusterCatalog,
 ]
 
 GALAXY_CATALOG_RANKING = {c.__name__: i for i, c in enumerate(GALAXY_CATALOGS)}
+
+
+GALAXY_TARGETMATCHES = [
+    UserGalaxyTargetMatch,
+    GladePlusTargetMatch,
+    GwgcTargetMatch,
+    Hecate2TargetMatch,
+    DesiDr1TargetMatch,
+    NedLvsTargetMatch,
+    Cosmicflows4TargetMatch,
+    LsDr9NorthTargetMatch,
+    LsDr10SouthTargetMatch,
+    Ps1GalaxyTargetMatch,
+    Sdss12PhotozTargetMatch,
+]
+GALAXY_TARGETMATCH_DICT = dict(zip([g.__name__ for g in GALAXY_CATALOGS], GALAXY_TARGETMATCHES))
 
 
 class AsymmetricGaussian(rv_continuous):
@@ -127,9 +184,7 @@ class AsymmetricGaussian(rv_continuous):
 
         # numerically integrate asymmetric Gaussian, for normalization
         integ_x = np.linspace(integ_a[0], integ_b[0], x.shape[0])
-        integ = np_trapz_fn(
-            y=self._pdf_unnorm(integ_x, mean, unc_minus, unc_plus), x=integ_x
-        )
+        integ = np_trapz_fn(y=self._pdf_unnorm(integ_x, mean, unc_minus, unc_plus), x=integ_x)
         integ_norm = 1 / integ
 
         # return unnormalized PDF multiplied by normalization factor
@@ -139,13 +194,9 @@ class AsymmetricGaussian(rv_continuous):
 def _localization_from_name(nonlocalized_event_name, max_time=Time.now()):
     """Find the most recenet LocalizationEvent object from the nonlocalized event name"""
     # first find the localization to use
-    localization_queryset = NonLocalizedEvent.objects.filter(
-        event_id=nonlocalized_event_name
-    )[0]
+    localization_queryset = NonLocalizedEvent.objects.filter(event_id=nonlocalized_event_name)[0]
 
-    all_localizations = EventLocalization.objects.filter(
-        nonlocalizedevent_id=localization_queryset.id
-    )
+    all_localizations = EventLocalization.objects.filter(nonlocalizedevent_id=localization_queryset.id)
 
     all_localizations_sorted = sorted(all_localizations, key=lambda x: x.date)
 
@@ -155,10 +206,26 @@ def _localization_from_name(nonlocalized_event_name, max_time=Time.now()):
         for loc in all_localizations_sorted[1:]:
             curr_loc_time = Time(localization.date, format="datetime")
             test_loc_time = Time(loc.date, format="datetime")
-            if curr_loc_time < test_loc_time <= max_time:
+            if test_loc_time > curr_loc_time and test_loc_time <= max_time:
                 localization = loc
 
     return localization
+
+
+def localization_sequence_from_name(nonlocalized_event_name):
+
+    nle = NonLocalizedEvent.objects.get(event_id=nonlocalized_event_name)
+
+    seqs = nle.sequences.all()
+
+    latest_seq = seqs[0]
+    for seq in seqs:
+        curr_latest_time = Time(latest_seq.details["time"])
+        test_latest_time = Time(seq.details["time"])
+        if test_latest_time > curr_latest_time:
+            latest_seq = seq
+
+    return seq
 
 
 def _distance_at_healpix(nonlocalized_event_name, target_id, max_time=Time.now()):
@@ -179,6 +246,38 @@ def _distance_at_healpix(nonlocalized_event_name, target_id, max_time=Time.now()
     return dist, dist_err
 
 
+def update_score_factor(event_candidate, key, value):
+    ScoreFactor.objects.update_or_create(event_candidate=event_candidate, key=key, defaults=dict(value=value))
+
+
+def delete_score_factor(event_candidate, key):
+    """This is basically only used since we are updating various scores
+    and may want to delete some, rather than update them, in the process"""
+    # first get any score factors that match this event candidate and key
+    matches = ScoreFactor.objects.filter(event_candidate=event_candidate, key=key)
+
+    if matches.count():
+        matches.delete()
+
+
+def save_score_to_targetextra(target, key, score):
+    """
+    Saves the scores that don't change to a TargetExtra object rather than a ScoreFactor
+    This is for:
+    1. point source score
+    2. MPC score
+    Since they are independent of the NLE that we are vetting the target against
+    """
+
+    # first delete the host galaxy key for this target if it already exists
+    te = TargetExtra.objects.filter(target_id=target.id, key=key)
+    if te.exists():
+        te.delete()
+
+    # then save the new score
+    TargetExtra.objects.update_or_create(target=target, key=key, value=score)
+
+
 def _save_host_galaxy_df(df, target):
 
     # first delete the host galaxy key for this target if it already exists
@@ -187,6 +286,7 @@ def _save_host_galaxy_df(df, target):
 
     newdf = df[
         [
+            "trove_uniq",
             "name",
             "pcc",
             "offset",
@@ -197,9 +297,9 @@ def _save_host_galaxy_df(df, target):
             "z_type",
             "default_mag",
             "catalog",
+            "submitter",
         ]
     ].copy()
-
     newdf["z_err"] = [
         [neg, pos]
         if neg != pos  # errors are asymmetric
@@ -213,9 +313,7 @@ def _save_host_galaxy_df(df, target):
         for neg, pos in zip(df.lumdist_neg_err, df.lumdist_pos_err)
     ]
     newdf = newdf.rename(columns=HOST_DF_COLMAP)
-    TargetExtra.objects.update_or_create(
-        target=target, key="Host Galaxies", value=newdf.to_json(orient="records")
-    )
+    TargetExtra.objects.update_or_create(target=target, key="Host Galaxies", value=newdf.to_json(orient="records"))
 
 
 def _save_associated_agn_df(df, target):
@@ -263,41 +361,32 @@ def _save_associated_agn_df(df, target):
         for neg, pos in zip(df.lumdist_neg_err, df.lumdist_pos_err)
     ]
     newdf = newdf.rename(columns=col_map)
-    TargetExtra.objects.update_or_create(
-        target=target, key="Associated AGN", value=newdf.to_json(orient="records")
-    )
+    TargetExtra.objects.update_or_create(target=target, key="Associated AGN", value=newdf.to_json(orient="records"))
 
 
 def skymap_association(
     nonlocalized_event_name: str,
     target_id: int,
     max_time=Time.now(),
+    prob: float = 0.95,
 ) -> float:
 
     # grab the EventLocalization object for nonlocalized_event_name
     localization = _localization_from_name(nonlocalized_event_name, max_time=max_time)
-    logger.info(f"Localization Used: {localization} ({localization.date}; {max_time})")
+    print(f"Localization Used: {localization} ({localization.date}; {max_time})")
 
     # find the healpix where this target is located
-    target_hpx_subq = (
-        sa.select(SaTarget.healpix)
-        .filter(SaTarget.basetarget_ptr_id == target_id)
-        .lateral()
-    )
+    target_hpx_subq = sa.select(SaTarget.healpix).filter(SaTarget.basetarget_ptr_id == target_id).lateral()
 
     # find the probdensity at the tile of the target_id
     # and for this localization id
-    probdensity_subq = sa.select(
-        sa.func.min(SaSkymapTile.probdensity).label("min_probdensity")
-    ).filter(
+    probdensity_subq = sa.select(sa.func.min(SaSkymapTile.probdensity).label("min_probdensity")).filter(
         SaSkymapTile.tile.contains(target_hpx_subq.c.healpix),
         SaSkymapTile.localization_id == localization.id,
     )
 
     # then we can sum from that probability density to the maximum
-    cumprob_query = sa.select(
-        sa.func.sum(SaSkymapTile.probdensity * SaSkymapTile.tile.area)
-    ).filter(
+    cumprob_query = sa.select(sa.func.sum(SaSkymapTile.probdensity * SaSkymapTile.tile.area)).filter(
         SaSkymapTile.probdensity >= probdensity_subq.c.min_probdensity,
         SaSkymapTile.localization_id == localization.id,
     )
@@ -311,7 +400,8 @@ def skymap_association(
 
 def pcc(r: list[float], m: list[float]):
     """
-    Probability of chance coincidence calculation (Bloom et al. 2002)
+    Probability of chance coincidence calculation (originally from
+    Bloom et al. 2002 and re-calibrated in Berger2010)
 
     PARAMETERS
     ----------
@@ -331,8 +421,9 @@ def pcc(r: list[float], m: list[float]):
 
 def host_association(
     target_id: int,
-    radius=5 * 60,  # 5 arcmin
-    pcc_threshold=PCC_THRESHOLD,
+    radius: float = HOST_ASSOC_RADIUS,
+    pcc_threshold: float = PCC_THRESHOLD,
+    _verbose: bool = False,
 ):
     """
     Find all of the potential hosts associated with this target
@@ -340,56 +431,72 @@ def host_association(
 
     target = Target.objects.filter(id=target_id)[0]
     ra, dec = target.ra, target.dec
-    coord = SkyCoord(ra, dec, unit="deg")
 
     start = time.time()
     res = []
     for catalog in GALAXY_CATALOGS:
         cat = catalog()
-        logger.info(f"Querying {cat}...")
-        query_set = cat.query(ra, dec, radius=radius)
+        catname = cat.__class__.__name__
+        if _verbose:
+            logger.info(f"Querying {cat}...")
+        query_set = cat.pcc_filter(ra, dec, radius=radius, pcc_max=pcc_threshold)
+
+        # first, delete any matches in <catalog>TargetMatch
+        matches = GALAXY_TARGETMATCH_DICT[catname].objects.filter(target=target)
+        if matches.count():
+            matches.delete()
 
         # if no queries are returned we can skip this catalog
         if query_set.count() == 0:
             continue
 
         # convert to a dataframe and standardize the column names
-        df = pd.DataFrame(list(query_set.values()))
+        cols = list(cat.ogcols) + ["ang_dist", "pcc"]
+        rows = query_set.values_list(*cols)
+        df = pd.DataFrame.from_records(rows, columns=cols)
         df = cat.to_standardized_catalog(df)
 
         # some extra cleaning before continuing
         df = df.dropna(
-            subset=["default_mag", "ra", "dec"]  # , "lumdist", "lumdist_err"]
+            subset=["default_mag", "ra", "dec", "lumdist", "lumdist_err"]
         )  # drop rows without the information we need
+        df["trove_uniq"] = df["trove_uniq"].astype(int)  # set to an int
+
+        # copy the ang_dist column to a column called "offset" for
+        # backwards compatability
+        # and convert to arcsec from degrees
+        df["offset"] = 3600 * df.ang_dist
 
         # now save the cleaned dataset
-        df["catalog"] = cat.__class__.__name__
+        df["catalog"] = catname
         res.append(df)
 
-    if res:  # when no matches, nothing to concatenate
-        df = pd.concat(res).reset_index(drop=True)
-    else:  # return an empty dataframe
-        return pd.DataFrame()
+        # save new matches to <catalog>TargetMatch
+        GALAXY_TARGETMATCH_DICT[catname].objects.bulk_create(
+            [
+                GALAXY_TARGETMATCH_DICT[catname](target=target, host_galaxy=val.trove_uniq, pcc=val.pcc)
+                for idx, val in df.iterrows()
+            ]
+        )
 
-    # calculate Pcc
-    catalog_coord = SkyCoord(df.ra, df.dec, unit="deg")
-    seps = coord.separation(catalog_coord).arcsec
-    df["offset"] = seps
-    df["pcc"] = pcc(seps, df["default_mag"])
+    if not res:  # if no host matches
+        cols = list(HOST_DF_COLMAP.keys()) + ["z_neg_err", "z_pos_err", "lumdist_neg_err", "lumdist_pos_err"]
+        rows = []
+        res.append(pd.DataFrame(rows, columns=cols))  # append empty df with appropriate columns
+
+    # concact results of individual catalogs into one dataframe
+    df = pd.concat(res).reset_index(drop=True)
 
     # TODO: We will need to put some deduplication code for the galaxy dataframe
     #       here at some point. For now it seems to work without it though!
 
-    # Finally, filter out anything <= pcc_threshold and sort inversely by pcc
-    ret_df = df[df.pcc <= pcc_threshold].sort_values("pcc", ascending=True)
+    # sort inversely by pcc
+    ret_df = df.sort_values("pcc", ascending=True)
 
     end = time.time()
-    logger.info(f"Queries finished in {end - start}s")
+    print(f"Galaxy table queries finished in {end - start}s")
 
     # save the host galaxy dataframe to the TargetExtra "Host Galaxies" keyword
-    if not len(ret_df):
-        # then we don't need to actually save any host information
-        return ret_df
     _save_host_galaxy_df(ret_df, target)
     return ret_df
 
@@ -401,9 +508,7 @@ def _get_nle_distance_pdf(
     max_time=Time.now(),
 ):
     # find the distance at the healpix
-    dist, dist_err = _distance_at_healpix(
-        nonlocalized_event_name, target_id, max_time=max_time
-    )
+    dist, dist_err = _distance_at_healpix(nonlocalized_event_name, target_id, max_time=max_time)
 
     # let user know about hard-coded bounds on luminosity distance array
     warnings.warn(
@@ -455,9 +560,7 @@ def host_distance_match(
     # now crossmatch this distance to the host galaxy dataframe
     _lumdist = np.linspace(D_LIM_LOWER, D_LIM_UPPER, int(10 * D_LIM_UPPER))
 
-    test_pdf = _get_nle_distance_pdf(
-        _lumdist, nonlocalized_event_name, target_id, max_time=max_time
-    )
+    test_pdf = _get_nle_distance_pdf(_lumdist, nonlocalized_event_name, target_id, max_time=max_time)
     host_pdfs = np.array(
         [
             AsymmetricGaussian().pdf(
@@ -496,20 +599,36 @@ def get_distance_score(host_df, target_id, nonlocalized_event_name):
         targ_dist = cosmo.luminosity_distance(targ.redshift).to(u.Mpc).value
         targ_dist_err = cosmo.luminosity_distance(1e-3).to(u.Mpc).value
         targ_pdf = norm.pdf(_lumdist, loc=targ_dist, scale=targ_dist_err)
-        return trapezoid(np.sqrt(targ_pdf * nle_pdf), x=_lumdist)
+        return trapezoid(np.sqrt(targ_pdf * nle_pdf), x=_lumdist), None  # None because there is no host name
+
+    # then use the redshift of user-uploaded host galaxies
+    userz_distance_hosts = host_df[host_df.z_type == "user spec-z"]
+    userz_distance_hosts.reset_index(inplace=True)  # avoid iloc exception
+    if len(userz_distance_hosts):
+        max_score = userz_distance_hosts.dist_norm_joint_prob.max()
+        max_score_host_name = userz_distance_hosts.iloc[userz_distance_hosts["dist_norm_joint_prob"].idxmax()]["name"]
+        return max_score, max_score_host_name
 
     # then use the redshift independent measurements of distances
     ind_distance_hosts = host_df[host_df.z_type == "z ind."]
+    ind_distance_hosts.reset_index(inplace=True)  # avoid iloc exception
     if len(ind_distance_hosts):
-        return ind_distance_hosts.dist_norm_joint_prob.max()
+        max_score = ind_distance_hosts.dist_norm_joint_prob.max()
+        max_score_host_name = ind_distance_hosts.iloc[ind_distance_hosts["dist_norm_joint_prob"].idxmax()]["name"]
+        return max_score, max_score_host_name
 
     # then use the specz hosts
     specz_hosts = host_df[host_df.z_type.str.contains("spec-z")]
+    specz_hosts.reset_index(inplace=True)  # avoid iloc exception
     if len(specz_hosts):
-        return specz_hosts.dist_norm_joint_prob.max()
+        max_score = specz_hosts.dist_norm_joint_prob.max()
+        max_score_host_name = specz_hosts.iloc[specz_hosts["dist_norm_joint_prob"].idxmax()]["name"]
+        return max_score, max_score_host_name
 
     # then if we don't know the spec-z or have an independent distance measure use the photo-z's
-    return host_df.dist_norm_joint_prob.max()
+    max_score = host_df.dist_norm_joint_prob.max()
+    max_score_host_name = host_df.iloc[host_df["dist_norm_joint_prob"].idxmax()]["name"]
+    return max_score, max_score_host_name
 
 
 def get_eventcandidate_default_distance(target_id: int, nonlocalized_event_name: str):
@@ -526,9 +645,7 @@ def get_eventcandidate_default_distance(target_id: int, nonlocalized_event_name:
     if not hosts.count():
         return _distance_at_healpix(nonlocalized_event_name, target_id)
 
-    host_df = pd.read_json(
-        io.StringIO(hosts[0].value)
-    )  # since we store the host info as a json str in the db
+    host_df = pd.read_json(io.StringIO(hosts[0].value))  # since we store the host info as a json str in the db
     if not len(host_df):
         return _distance_at_healpix(nonlocalized_event_name, target_id)
 
@@ -540,10 +657,15 @@ def get_eventcandidate_default_distance(target_id: int, nonlocalized_event_name:
 
     # because we already sorted the dataframe by our "preferred" catalogs, we can
     # just always take the distances from the first row and return them
-    # so let's start with z independent measures of the distance
+    # start with user-provided host spec z's
+    userz_distance_hosts = host_df[host_df.z_type == "user spec-z"]
     ind_distance_hosts = host_df[host_df.z_type == "z ind."]
     specz_hosts = host_df[host_df.z_type.str.contains("spec-z")]
-    if len(ind_distance_hosts):
+    if len(userz_distance_hosts):
+        to_ret = userz_distance_hosts.iloc[0]
+
+    # then z-indep host distances
+    elif len(ind_distance_hosts):
         to_ret = ind_distance_hosts.iloc[0]
 
     # then spec-z's
@@ -557,24 +679,23 @@ def get_eventcandidate_default_distance(target_id: int, nonlocalized_event_name:
     return to_ret.Dist, to_ret.DistErr
 
 
-def point_source_association(target_id: int, radius: float = 2):
+def point_source_association(target_id: int, radius: float = PS_ASSOC_RADIUS):
 
     target = Target.objects.get(id=target_id)
     ra, dec = target.ra, target.dec
 
     point_source_catalogs = [
-        ("source_id", AsassnVariableStar),
-        ("source_id", Gaiadr3Variable),
-        ("objid", Ps1PointSource),
-        # ZtfVarStar,
+        AsassnVariableStar,
+        Gaiadr3Variable,
+        Ps1PointSource,
+        ZtfVarStar,
         # this is the 2MASS point source catalog
         # I'm leaving it commented out because we need to test it a bit more before
         # using it!
         # TwoMass
     ]
 
-    matches = {}
-    for name_column, catalog in point_source_catalogs:
+    for catalog in point_source_catalogs:
         cat = catalog()
         query_set = cat.query(ra, dec, radius)
 
@@ -582,15 +703,14 @@ def point_source_association(target_id: int, radius: float = 2):
         if query_set.count() == 0:
             continue
 
-        matches[cat.catalog_model.__name__] = (
-            [ps_match.__dict__[name_column] for ps_match in query_set],
-            [ps_match.ang_dist for ps_match in query_set],
-        )
+        # otherwise we need to return a score of 0 for this candidate because
+        # it corresponds to a point source
+        return 0
 
-    return matches
+    return 1
 
 
-def agn_association_2d(target_id: int, radius: float = 2):
+def agn_association_2d(target_id: int, radius: float = AGN_ASSOC_RADIUS):
     """
     This searches the AGN catalogs for a match for this target
     """
@@ -598,9 +718,7 @@ def agn_association_2d(target_id: int, radius: float = 2):
     target = Target.objects.get(id=target_id)
     ra, dec = target.ra, target.dec
 
-    agn_catalogs = [
-        Milliquas
-    ]  # there is currently only one, but this should help to "future proof" the code
+    agn_catalogs = [Milliquas]  # there is currently only one, but this should help to "future proof" the code
 
     agn_matches = None
     res = []
@@ -623,9 +741,7 @@ def agn_association_2d(target_id: int, radius: float = 2):
         df = cat.to_standardized_catalog(df)
 
         # some extra cleaning before continuing
-        df = df.dropna(
-            subset=["default_mag", "ra", "dec", "lumdist"]
-        )  # drop rows without the information we need
+        df = df.dropna(subset=["default_mag", "ra", "dec", "lumdist"])  # drop rows without the information we need
 
         # now save the cleaned dataset
         df["catalog"] = cat.__class__.__name__
@@ -640,7 +756,7 @@ def agn_association_2d(target_id: int, radius: float = 2):
     ret_df = df.copy()
 
     end = time.time()
-    logger.info(f"Queries finished in {end - start}s")
+    logger.info(f"AGN catalog queries finished in {end - start}s")
 
     # save the host galaxy dataframe to the TargetExtra "Associated AGN" keyword
     _save_associated_agn_df(ret_df, target)
@@ -684,9 +800,7 @@ def agn_distance_match(
     # now crossmatch this distance to the to the AGNs dataframe
     _lumdist = np.linspace(D_LIM_LOWER, D_LIM_UPPER, int(10 * D_LIM_UPPER))
 
-    test_pdf = _get_nle_distance_pdf(
-        _lumdist, nonlocalized_event_name, target_id, max_time=max_time
-    )
+    test_pdf = _get_nle_distance_pdf(_lumdist, nonlocalized_event_name, target_id, max_time=max_time)
     agn_pdfs = np.array(
         [
             AsymmetricGaussian().pdf(
@@ -708,3 +822,39 @@ def agn_distance_match(
     # Original paper: http://www.jstor.org/stable/25047806
     agn_df["dist_norm_joint_prob"] = trapezoid(np.sqrt(joint_prob), x=_lumdist, axis=1)
     return agn_df
+
+
+def run_mpc(target_id: int) -> None:
+
+    target = Target.objects.get(id=target_id)
+
+    # get photometry, throwing out limiting mags, phot with no error, and phot with SNR < 5
+    phot = ReducedDatum.objects.filter(
+        target_id=target_id,
+        data_type="photometry",
+        value__magnitude__isnull=False,
+        value__error__isnull=False,
+        value__error__lte=2.5 / np.log(10) / 5,
+    )
+    # if more than (5-sigma) 1 detection, likely not a MPC object
+    if phot.exists() and len(phot) > 1:
+        logger.warn("This candidate has more than 1 >5-sigma detection, " + "skipping MPC!")
+        mpc_match = None
+    # if only 1 detection, run MPC match
+    elif phot.exists() and len(phot) == 1:
+        latest_det = phot.latest()
+        date = Time(latest_det.timestamp).mjd
+        t = Transient(target.ra, target.dec)
+        mpc_match = t.minor_planet_match(date)
+    # no detections --> can't do MPC match
+    else:
+        logger.warn("This candidate has no photometry, skipping MPC!")
+        mpc_match = None
+
+    if mpc_match is not None:
+        # update the score factor information
+        save_score_to_targetextra(target, "mpc_match_name", mpc_match.match_name)
+        save_score_to_targetextra(target, "mpc_match_sep", mpc_match.distance)
+        save_score_to_targetextra(target, "mpc_match_date", latest_det.timestamp)
+    else:
+        save_score_to_targetextra(target, "mpc_match_name", None)
