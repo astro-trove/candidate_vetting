@@ -27,13 +27,13 @@ classifiers = [
 ]
 
 dependencies = [
-    "astropy==6.1.7",
-    "django==5.2.13",
-    "numpy==1.26.4",
-    "pandas==3.0.3",
-    "requests==2.34.2",
-    "scipy==1.17.1",
-    "SQLAlchemy==2.0.50",
+    "astropy",
+    "django",
+    "numpy",
+    "pandas",
+    "requests",
+    "scipy",
+    "SQLAlchemy",
     "tomtoolkit @ git+https://github.com/noahfranz13/tom_base.git@v2.32.3",
     "trove_mpc @ git+https://github.com/astro-trove/trove-mpc.git",
 ]
