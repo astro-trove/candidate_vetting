@@ -27,7 +27,7 @@ from django.conf import settings
 from trove_mpc import Transient
 from tom_targets.models import Target, TargetExtra
 from .models import ScoreFactor
-from custom_code.healpix_utils import SaTarget
+from .healpix_utils import SaTarget
 from tom_nonlocalizedevents.models import (
     # EventCandidate,
     EventLocalization,

@@ -116,9 +116,7 @@ class TNS_Phot(PhotCatalog):
             target.ra = tns_ra
             target.dec = tns_dec
             target.save()
-            logger.info(
-                f"Updated coordinates to {target.ra:.6f}, {target.dec:.6f} based on TNS"
-            )
+            logger.info(f"Updated coordinates to {target.ra:.6f}, {target.dec:.6f} based on TNS")
 
         # now we can ingest any new photometry
         n_new_phot = 0
@@ -151,13 +149,9 @@ class TNS_Phot(PhotCatalog):
         while True:
             response = requests.post(get_url, **requests_kwargs)
             try:
-                logger.info(
-                    f"The TNS server responded with status {response.json()['id_code']}"
-                )
+                logger.info(f"The TNS server responded with status {response.json()['id_code']}")
             except:
-                logger.info(
-                    f"The TNS server responded with a response that can not be parsed as a JSON:\n{response}"
-                )
+                logger.info(f"The TNS server responded with a response that can not be parsed as a JSON:\n{response}")
 
             if response.status_code != 200:
                 return (
@@ -166,9 +160,7 @@ class TNS_Phot(PhotCatalog):
                 )  # I'm just setting the time_to_reset to -99 so other code doesn't break
 
             remaining_str = response.headers.get("x-rate-limit-remaining", -99)
-            time_to_reset = int(
-                response.headers.get("x-rate-limit-reset", -99)
-            )  # in seconds
+            time_to_reset = int(response.headers.get("x-rate-limit-reset", -99))  # in seconds
 
             if remaining_str == "Exceeded":
                 # we already exceeded the rate limit
@@ -182,9 +174,7 @@ class TNS_Phot(PhotCatalog):
             if remaining == 0 and time_to_reset < timelimit:
                 # we have no remaining API queries :(
                 # but we don't have very long to wait!
-                logger.info(
-                    f"Waiting {time_to_reset}s for TNS to let us query again..."
-                )
+                logger.info(f"Waiting {time_to_reset}s for TNS to let us query again...")
                 time.sleep(time_to_reset)
 
             elif remaining == 0 and time_to_reset > timelimit:
@@ -196,13 +186,7 @@ class TNS_Phot(PhotCatalog):
                 return response, time_to_reset
 
     def _set_bot_tns_marker(self, BOT_ID: str = None, BOT_NAME: str = None):
-        tns_marker = (
-            'tns_marker{"tns_id": "'
-            + str(BOT_ID)
-            + '", "type": "bot", "name": "'
-            + BOT_NAME
-            + '"}'
-        )
+        tns_marker = 'tns_marker{"tns_id": "' + str(BOT_ID) + '", "type": "bot", "name": "' + BOT_NAME + '"}'
         return tns_marker
 
 
@@ -310,14 +294,10 @@ class ATLAS_Forced_Phot(PhotCatalog):
                 if resp.status_code == 200:  # HTTP OK
                     if resp.json()["finishtimestamp"]:
                         result_url = resp.json()["result_url"]
-                        print(
-                            f"Task is complete with results available at {result_url}"
-                        )
+                        print(f"Task is complete with results available at {result_url}")
                     elif resp.json()["starttimestamp"]:
                         if not taskstarted_printed:
-                            print(
-                                f"Task is running (started at {resp.json()['starttimestamp']})"
-                            )
+                            print(f"Task is running (started at {resp.json()['starttimestamp']})")
                             taskstarted_printed = True
                         time.sleep(2)
                     else:
@@ -355,9 +335,7 @@ class ATLAS_Forced_Phot(PhotCatalog):
             # see https://fallingstar-data.com/forcedphot/resultdesc/
             signal_to_noise = datum["uJy"] / datum["duJy"]
             if signal_to_noise <= signal_to_noise_cutoff:
-                value["limit"] = 23.9 - 2.5 * np.log10(
-                    signal_to_noise_cutoff * datum["duJy"]
-                )
+                value["limit"] = 23.9 - 2.5 * np.log10(signal_to_noise_cutoff * datum["duJy"])
             else:
                 value["magnitude"] = 23.9 - 2.5 * np.log10(datum["uJy"])
                 value["error"] = 2.5 / np.log(10.0) / signal_to_noise
@@ -371,9 +349,7 @@ class ATLAS_Forced_Phot(PhotCatalog):
 
             n_new_phot += created
         if n_new_phot:
-            logger.info(
-                f"Added {n_new_phot:d} photometry points from ATLAS forced photometry"
-            )
+            logger.info(f"Added {n_new_phot:d} photometry points from ATLAS forced photometry")
 
         return bool(n_new_phot)
 
@@ -431,9 +407,7 @@ class ATLAS_Forced_Phot(PhotCatalog):
         # PARSE DATA WITH SOME FIXED CLIPPING
         oepochs = []
         cepochs = []
-        csvReader = csv.DictReader(
-            fpData, dialect="excel", delimiter=",", quotechar='"'
-        )
+        csvReader = csv.DictReader(fpData, dialect="excel", delimiter=",", quotechar='"')
 
         for row in csvReader:
             for k, v in row.items():
@@ -461,9 +435,7 @@ class ATLAS_Forced_Phot(PhotCatalog):
 
         maskList = []
         for flux in [cdataFlux, odataFlux]:
-            fullMask = rolling_window_sigma_clip(
-                log=log, array=flux, clippingSigma=clippingSigma, windowSize=11
-            )
+            fullMask = rolling_window_sigma_clip(log=log, array=flux, clippingSigma=clippingSigma, windowSize=11)
             maskList.append(fullMask)
 
         try:
@@ -495,9 +467,7 @@ class ATLAS_Forced_Phot(PhotCatalog):
             # WE'RE GOING TO CREATE FURTHER SUBSETS FOR EACH UNQIUE MJD (FLOORED TO AN INTEGER)
             # MAG VARIABLE == FLUX (JUST TO CONFUSE YOU)
             distinctMjds = {}
-            for mjd, flx, err, lim in zip(
-                data["mjds"], data["mags"], data["magErrs"], data["lim5sig"]
-            ):
+            for mjd, flx, err, lim in zip(data["mjds"], data["mags"], data["magErrs"], data["lim5sig"]):
                 # DICT KEY IS THE UNIQUE INTEGER MJD
                 key = str(int(math.floor(mjd / float(binningDays))))
                 # FIRST DATA POINT OF THE NIGHTS? CREATE NEW DATA SET
@@ -532,9 +502,7 @@ class ATLAS_Forced_Phot(PhotCatalog):
                 try:
                     comb5SigLimit = 23.9 - 2.5 * math.log10(5.0 * combError)
                 except ValueError:
-                    logger.warn(
-                        "Skipping this ATLAS photometry point because math.log10 raises a domain error!"
-                    )
+                    logger.warn("Skipping this ATLAS photometry point because math.log10 raises a domain error!")
                     continue  # this skips to the next for-loop iteration
 
                 # GIVE ME NUMBER OF DATA POINTS COMBINED
@@ -635,9 +603,7 @@ class ZTF_Forced_Phot(PhotCatalog):
             fplc, fplog = result
 
             ra, dec = self._read_fp_log(fplog)
-            logger.info(
-                f"Finding TROVE Target at ra={ra} dec={dec} to add this photometry to"
-            )
+            logger.info(f"Finding TROVE Target at ra={ra} dec={dec} to add this photometry to")
 
             # this coordinate should be within 0.1" of the actual target coordinates
             # because we've rounded the ra/dec in degrees to 6 decimal places
@@ -657,9 +623,7 @@ class ZTF_Forced_Phot(PhotCatalog):
 
             # now we can also parse the photometry
             phot = pd.read_csv(fplc, sep="\s+", comment="#")
-            phot.columns = phot.columns.str.replace(
-                ",", ""
-            )  # bc the column names have commas but not the data
+            phot.columns = phot.columns.str.replace(",", "")  # bc the column names have commas but not the data
 
             # save this photometry to the database
             phot = self._filter_bad_phot(phot)
@@ -668,9 +632,7 @@ class ZTF_Forced_Phot(PhotCatalog):
             # cleanup
             os.remove(fplc)  # rm the light curve file
             os.remove(fplog)  # rm the light curve log
-            os.remove(
-                logfile
-            )  # rm the log file associated with the original request so we don't keep checking for it
+            os.remove(logfile)  # rm the log file associated with the original request so we don't keep checking for it
 
             logger.info(f"Finished ingesting ZTF forced photometry for {targ.name}")
             targets_finished.append(targ.name)
@@ -683,20 +645,16 @@ class ZTF_Forced_Phot(PhotCatalog):
         # 1. Remove epochs with infobitssci >= 33554432
         # 2. Remove epochs with scisigpix > 25
         # 3. Remove epochs with sciinpseeing > 4"
-        phot = phot[
-            (phot.infobitssci < 33554432)
-            * (phot.scisigpix <= 25)
-            * (phot.sciinpseeing <= 4)
-        ]
+        phot = phot[(phot.infobitssci < 33554432) * (phot.scisigpix <= 25) * (phot.sciinpseeing <= 4)]
 
         # then we also need to check the flux uncertainty estimates
         # according to sec. 6.3 in the docs
         # essentially, chisq should be roughly 1, and if it isn't then we should
         # correct the flux uncertainty
         mask = (phot.forcediffimchisq > 0.9) * (phot.forcediffimchisq < 1.1)
-        phot.loc[mask, "forcediffimfluxunc"] = phot.loc[
-            mask, "forcediffimfluxunc"
-        ] * np.sqrt(phot.loc[mask, "forcediffimchisq"])
+        phot.loc[mask, "forcediffimfluxunc"] = phot.loc[mask, "forcediffimfluxunc"] * np.sqrt(
+            phot.loc[mask, "forcediffimchisq"]
+        )
 
         return phot
 
@@ -765,9 +723,7 @@ class ZTF_Forced_Phot(PhotCatalog):
                     # decode the email subject
                     sender, encoding = email.header.decode_header(msg.get("From"))[0]
 
-                    if isinstance(sender, bytes) or not re.search(
-                        "ztfpo@ipac\.caltech\.edu", sender
-                    ):
+                    if isinstance(sender, bytes) or not re.search("ztfpo@ipac\.caltech\.edu", sender):
                         continue  # move onto the next email
 
                     # Get message body
@@ -776,33 +732,21 @@ class ZTF_Forced_Phot(PhotCatalog):
 
                     this_date = msg["Date"]
                     this_date_tuple = email.utils.parsedate_tz(msg["Date"])
-                    local_date = datetime.fromtimestamp(
-                        email.utils.mktime_tz(this_date_tuple)
-                    )
+                    local_date = datetime.fromtimestamp(email.utils.mktime_tz(this_date_tuple))
 
                     # Check if this is the correct one
                     if not content_type == "text/plain":
                         continue  # move onto the next email
 
-                    processing_match = self._match_ztf_message(
-                        job_info, body, local_date
-                    )
-                    subject, encoding = email.header.decode_header(msg.get("Subject"))[
-                        0
-                    ]
+                    processing_match = self._match_ztf_message(job_info, body, local_date)
+                    subject, encoding = email.header.decode_header(msg.get("Subject"))[0]
 
                     if not processing_match:
                         continue  # move onto the next email
 
                     # Grab the appropriate URLs
-                    lc_url = (
-                        "https"
-                        + (body.split("_lc.txt")[0] + "_lc.txt").split("https")[-1]
-                    )
-                    log_url = (
-                        "https"
-                        + (body.split("_log.txt")[0] + "_log.txt").split("https")[-1]
-                    )
+                    lc_url = "https" + (body.split("_lc.txt")[0] + "_lc.txt").split("https")[-1]
+                    log_url = "https" + (body.split("_log.txt")[0] + "_log.txt").split("https")[-1]
 
                     # Download each file
                     lc_initial_file_name = self._download_ztf_url(lc_url)
@@ -815,16 +759,8 @@ class ZTF_Forced_Phot(PhotCatalog):
                             log_initial_file_name,
                         ]
                     else:
-                        lc_final_name = (
-                            source_name.replace(" ", "")
-                            + "_"
-                            + lc_initial_file_name.split("_")[-1]
-                        )
-                        log_final_name = (
-                            source_name.replace(" ", "")
-                            + "_"
-                            + log_initial_file_name.split("_")[-1]
-                        )
+                        lc_final_name = source_name.replace(" ", "") + "_" + lc_initial_file_name.split("_")[-1]
+                        log_final_name = source_name.replace(" ", "") + "_" + log_initial_file_name.split("_")[-1]
                         os.rename(lc_initial_file_name, lc_final_name)
                         os.rename(log_initial_file_name, log_final_name)
                         downloaded_file_names = [lc_final_name, log_final_name]
@@ -843,9 +779,7 @@ class ZTF_Forced_Phot(PhotCatalog):
 
         return downloaded_file_names
 
-    def _ztf_forced_photometry(
-        self, ra, decl, jdstart=None, jdend=None, days=60, send=True
-    ):
+    def _ztf_forced_photometry(self, ra, decl, jdstart=None, jdend=None, days=60, send=True):
         """Start the ZTF forced photometry job"""
 
         if jdend is None:
@@ -867,9 +801,7 @@ class ZTF_Forced_Phot(PhotCatalog):
         ra_str = np.format_float_positional(float(skycoord.ra.deg), precision=6)
         decl_str = np.format_float_positional(float(skycoord.dec.deg), precision=6)
 
-        log_file_name = self._random_log_file_name(
-            log_file_dir=settings.ZTFTMPDIR
-        )  # Unique file name
+        log_file_name = self._random_log_file_name(log_file_dir=settings.ZTFTMPDIR)  # Unique file name
 
         logger.info("Sending ZTF request for (R.A.,Decl)=(%s,%s)" % (ra, decl))
 
@@ -880,15 +812,12 @@ class ZTF_Forced_Phot(PhotCatalog):
             + "dec=%s&" % decl_str
             + "jdstart=%s&" % jdstart_str
             + "jdend=%s&" % jdend_str
-            + 'email=%s&userpass=%s"'
-            % (self._ztffp_user_address, self._ztffp_user_password)
+            + 'email=%s&userpass=%s"' % (self._ztffp_user_address, self._ztffp_user_password)
         )
         logger.info(wget_command)
 
         if send:
-            p = subprocess.Popen(
-                wget_command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True
-            )
+            p = subprocess.Popen(wget_command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
             stdout, stderr = p.communicate()
 
         os.chmod(log_file_name, 0o0777)
@@ -899,10 +828,7 @@ class ZTF_Forced_Phot(PhotCatalog):
         log_file_name = None
         while log_file_name is None or os.path.exists(log_file_name):
             log_file_name = f"{log_file_dir}/ztffp_%s.txt" % "".join(
-                [
-                    random.choice(string.ascii_uppercase + string.digits)
-                    for i in range(10)
-                ]
+                [random.choice(string.ascii_uppercase + string.digits) for i in range(10)]
             )
 
         return log_file_name
@@ -919,9 +845,7 @@ class ZTF_Forced_Phot(PhotCatalog):
         logger.info("Downloading file...")
         logger.info("\t" + wget_command)
 
-        p = subprocess.Popen(
-            wget_command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True
-        )
+        p = subprocess.Popen(wget_command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
         stdout, stderr = p.communicate()
 
         return url.split("/")[-1]
@@ -949,21 +873,13 @@ class ZTF_Forced_Phot(PhotCatalog):
 
                 # Call this a match only if parameters match
                 if (
-                    np.format_float_positional(
-                        float(test_ra), precision=6, pad_right=6
-                    ).replace(" ", "0")
+                    np.format_float_positional(float(test_ra), precision=6, pad_right=6).replace(" ", "0")
                     == job_info["ra"].to_list()[0]
-                    and np.format_float_positional(
-                        float(test_decl), precision=6, pad_right=6
-                    ).replace(" ", "0")
+                    and np.format_float_positional(float(test_decl), precision=6, pad_right=6).replace(" ", "0")
                     == job_info["dec"].to_list()[0]
-                    and np.format_float_positional(
-                        float(test_minjd), precision=6, pad_right=6
-                    ).replace(" ", "0")
+                    and np.format_float_positional(float(test_minjd), precision=6, pad_right=6).replace(" ", "0")
                     == job_info["jdstart"].to_list()[0]
-                    and np.format_float_positional(
-                        float(test_maxjd), precision=6, pad_right=6
-                    ).replace(" ", "0")
+                    and np.format_float_positional(float(test_maxjd), precision=6, pad_right=6).replace(" ", "0")
                     == job_info["jdend"].to_list()[0]
                 ):
                     match = True
@@ -985,12 +901,8 @@ class ZTF_Forced_Phot(PhotCatalog):
         job_info["jdend"] = np.format_float_positional(
             float(job_info["jdend"].to_list()[0]), precision=6, pad_right=6
         ).replace(" ", "0")
-        job_info["isostart"] = Time(
-            float(job_info["jdstart"].to_list()[0]), format="jd", scale="utc"
-        ).iso
-        job_info["isoend"] = Time(
-            float(job_info["jdend"].to_list()[0]), format="jd", scale="utc"
-        ).iso
+        job_info["isostart"] = Time(float(job_info["jdstart"].to_list()[0]), format="jd", scale="utc").iso
+        job_info["isoend"] = Time(float(job_info["jdend"].to_list()[0]), format="jd", scale="utc").iso
         job_info["ctime"] = os.path.getctime(file_name) - time.localtime().tm_gmtoff
         job_info["cdatetime"] = datetime.fromtimestamp(os.path.getctime(file_name))
 
@@ -1002,8 +914,6 @@ class ZTF_Forced_Phot(PhotCatalog):
             loglines = f.readlines()
 
         ra = float(loglines[6].replace("fph_ra = ", "").replace("degrees", "").strip())
-        dec = float(
-            loglines[7].replace("fph_dec = ", "").replace("degrees", "").strip()
-        )
+        dec = float(loglines[7].replace("fph_dec = ", "").replace("degrees", "").strip())
 
         return ra, dec
