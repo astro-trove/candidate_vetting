@@ -26,7 +26,6 @@ from django.conf import settings
 
 from trove_mpc import Transient
 from tom_targets.models import Target, TargetExtra
-from .models import ScoreFactor
 from .healpix_utils import SaTarget
 from tom_nonlocalizedevents.models import (
     # EventCandidate,
@@ -244,20 +243,6 @@ def _distance_at_healpix(nonlocalized_event_name, target_id, max_time=Time.now()
         dist, dist_err = session.execute(query).fetchall()[0]
 
     return dist, dist_err
-
-
-def update_score_factor(event_candidate, key, value):
-    ScoreFactor.objects.update_or_create(event_candidate=event_candidate, key=key, defaults=dict(value=value))
-
-
-def delete_score_factor(event_candidate, key):
-    """This is basically only used since we are updating various scores
-    and may want to delete some, rather than update them, in the process"""
-    # first get any score factors that match this event candidate and key
-    matches = ScoreFactor.objects.filter(event_candidate=event_candidate, key=key)
-
-    if matches.count():
-        matches.delete()
 
 
 def save_score_to_targetextra(target, key, score):
