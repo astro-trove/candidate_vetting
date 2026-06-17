@@ -37,7 +37,7 @@ from django.db.models.functions import Sqrt
 from .catalog import PhotCatalog
 from .util import _QUERY_METHOD_DOCSTRING, RADIUS_ARCSEC, create_phot
 
-from trove_targets.models import Target
+from tom_targets.models import Target
 
 logger = logging.getLogger(__file__)
 
