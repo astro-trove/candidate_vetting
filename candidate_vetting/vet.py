@@ -62,20 +62,6 @@ from candidate_vetting.public_catalogs.static_catalogs import (
     DesiDr1,
 )
 from candidate_vetting.public_catalogs.dynamic_catalogs import UserGalaxy
-from candidate_vetting.models import (
-    Cosmicflows4TargetMatch,
-    GladePlusTargetMatch,
-    GwgcTargetMatch,
-    Hecate1TargetMatch,
-    Hecate2TargetMatch,
-    LsDr9NorthTargetMatch,
-    LsDr10SouthTargetMatch,
-    Ps1GalaxyTargetMatch,
-    Sdss12PhotozTargetMatch,
-    NedLvsTargetMatch,
-    DesiDr1TargetMatch,
-    UserGalaxyTargetMatch,
-)
 
 if minversion(np, "2.0.0"):
     np_trapz_fn = np.trapezoid
@@ -137,22 +123,6 @@ GALAXY_CATALOGS = [
 ]
 
 GALAXY_CATALOG_RANKING = {c.__name__: i for i, c in enumerate(GALAXY_CATALOGS)}
-
-
-GALAXY_TARGETMATCHES = [
-    UserGalaxyTargetMatch,
-    GladePlusTargetMatch,
-    GwgcTargetMatch,
-    Hecate2TargetMatch,
-    DesiDr1TargetMatch,
-    NedLvsTargetMatch,
-    Cosmicflows4TargetMatch,
-    LsDr9NorthTargetMatch,
-    LsDr10SouthTargetMatch,
-    Ps1GalaxyTargetMatch,
-    Sdss12PhotozTargetMatch,
-]
-GALAXY_TARGETMATCH_DICT = dict(zip([g.__name__ for g in GALAXY_CATALOGS], GALAXY_TARGETMATCHES))
 
 
 class AsymmetricGaussian(rv_continuous):
@@ -426,11 +396,6 @@ def host_association(
             logger.info(f"Querying {cat}...")
         query_set = cat.pcc_filter(ra, dec, radius=radius, pcc_max=pcc_threshold)
 
-        # first, delete any matches in <catalog>TargetMatch
-        matches = GALAXY_TARGETMATCH_DICT[catname].objects.filter(target=target)
-        if matches.count():
-            matches.delete()
-
         # if no queries are returned we can skip this catalog
         if query_set.count() == 0:
             continue
@@ -455,14 +420,6 @@ def host_association(
         # now save the cleaned dataset
         df["catalog"] = catname
         res.append(df)
-
-        # save new matches to <catalog>TargetMatch
-        GALAXY_TARGETMATCH_DICT[catname].objects.bulk_create(
-            [
-                GALAXY_TARGETMATCH_DICT[catname](target=target, host_galaxy=val.trove_uniq, pcc=val.pcc)
-                for idx, val in df.iterrows()
-            ]
-        )
 
     if not res:  # if no host matches
         cols = list(HOST_DF_COLMAP.keys()) + ["z_neg_err", "z_pos_err", "lumdist_neg_err", "lumdist_pos_err"]
