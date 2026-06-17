@@ -395,6 +395,8 @@ def host_association(
         if _verbose:
             logger.info(f"Querying {cat}...")
         query_set = cat.pcc_filter(ra, dec, radius=radius, pcc_max=pcc_threshold)
+        if _verbose:
+            logger.info(f"Found {query_set.count()} matches in {catname}")
 
         # if no queries are returned we can skip this catalog
         if query_set.count() == 0:
@@ -408,7 +410,7 @@ def host_association(
 
         # some extra cleaning before continuing
         df = df.dropna(
-            subset=["default_mag", "ra", "dec", "lumdist", "lumdist_err"]
+            subset=["default_mag", "ra", "dec"]
         )  # drop rows without the information we need
         df["trove_uniq"] = df["trove_uniq"].astype(int)  # set to an int
 
@@ -685,7 +687,7 @@ def agn_association_2d(target_id: int, radius: float = AGN_ASSOC_RADIUS):
         df = cat.to_standardized_catalog(df)
 
         # some extra cleaning before continuing
-        df = df.dropna(subset=["default_mag", "ra", "dec", "lumdist"])  # drop rows without the information we need
+        df = df.dropna(subset=["default_mag", "ra", "dec"])  # drop rows without the information we need
 
         # now save the cleaned dataset
         df["catalog"] = cat.__class__.__name__
