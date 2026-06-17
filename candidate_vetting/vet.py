@@ -664,23 +664,24 @@ def get_eventcandidate_default_distance(target_id: int, nonlocalized_event_name:
     return to_ret.Dist, to_ret.DistErr
 
 
-def point_source_association(target_id: int, radius: float = PS_ASSOC_RADIUS):
+def point_source_association(target_id: int, radius: float = 2):
 
     target = Target.objects.get(id=target_id)
     ra, dec = target.ra, target.dec
 
     point_source_catalogs = [
-        AsassnVariableStar,
-        Gaiadr3Variable,
-        Ps1PointSource,
-        ZtfVarStar,
+        ("source_id", AsassnVariableStar),
+        ("source_id", Gaiadr3Variable),
+        ("objid", Ps1PointSource),
+        # ZtfVarStar,
         # this is the 2MASS point source catalog
         # I'm leaving it commented out because we need to test it a bit more before
         # using it!
         # TwoMass
     ]
 
-    for catalog in point_source_catalogs:
+    matches = {}
+    for name_column, catalog in point_source_catalogs:
         cat = catalog()
         query_set = cat.query(ra, dec, radius)
 
@@ -688,11 +689,12 @@ def point_source_association(target_id: int, radius: float = PS_ASSOC_RADIUS):
         if query_set.count() == 0:
             continue
 
-        # otherwise we need to return a score of 0 for this candidate because
-        # it corresponds to a point source
-        return 0
+        matches[cat.catalog_model.__name__] = (
+            [ps_match.__dict__[name_column] for ps_match in query_set],
+            [ps_match.ang_dist for ps_match in query_set],
+        )
 
-    return 1
+    return matches
 
 
 def agn_association_2d(target_id: int, radius: float = AGN_ASSOC_RADIUS):
