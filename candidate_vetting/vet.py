@@ -21,7 +21,6 @@ from django.conf import settings
 
 from trove_mpc import Transient
 from tom_targets.models import Target, TargetExtra
-from .healpix_utils import SaTarget
 from tom_nonlocalizedevents.models import (
     # EventCandidate,
     EventLocalization,
@@ -112,8 +111,6 @@ GALAXY_CATALOGS = [
     Sdss12Photoz,
 ]
 
-GALAXY_CATALOG_RANKING = {c.__name__: i for i, c in enumerate(GALAXY_CATALOGS)}
-
 
 def localization_sequence_from_name(nonlocalized_event_name):
 
@@ -129,24 +126,6 @@ def localization_sequence_from_name(nonlocalized_event_name):
             latest_seq = seq
 
     return seq
-
-
-def _distance_at_healpix(nonlocalized_event_name, target_id, max_time=Time.now()):
-    """Computes the GW distance at the target_id healpix location"""
-
-    localization = _localization_from_name(nonlocalized_event_name, max_time=max_time)
-    # find the distance at the healpix
-    query = sa.select(SaSkymapTile.distance_mean, SaSkymapTile.distance_std).filter(
-        SaTarget.basetarget_ptr_id == target_id,
-        SaSkymapTile.localization_id == localization.id,
-        SaSkymapTile.tile.contains(SaTarget.healpix),
-    )
-
-    # execute the query
-    with Session(sa_engine) as session:
-        dist, dist_err = session.execute(query).fetchall()[0]
-
-    return dist, dist_err
 
 
 def save_score_to_targetextra(target, key, score):
@@ -253,40 +232,6 @@ def _save_associated_agn_df(df, target):
     TargetExtra.objects.update_or_create(target=target, key="Associated AGN", value=newdf.to_json(orient="records"))
 
 
-def skymap_association(
-    nonlocalized_event_name: str,
-    target_id: int,
-    max_time=Time.now(),
-    prob: float = 0.95,
-) -> float:
-
-    # grab the EventLocalization object for nonlocalized_event_name
-    localization = _localization_from_name(nonlocalized_event_name, max_time=max_time)
-    print(f"Localization Used: {localization} ({localization.date}; {max_time})")
-
-    # find the healpix where this target is located
-    target_hpx_subq = sa.select(SaTarget.healpix).filter(SaTarget.basetarget_ptr_id == target_id).lateral()
-
-    # find the probdensity at the tile of the target_id
-    # and for this localization id
-    probdensity_subq = sa.select(sa.func.min(SaSkymapTile.probdensity).label("min_probdensity")).filter(
-        SaSkymapTile.tile.contains(target_hpx_subq.c.healpix),
-        SaSkymapTile.localization_id == localization.id,
-    )
-
-    # then we can sum from that probability density to the maximum
-    cumprob_query = sa.select(sa.func.sum(SaSkymapTile.probdensity * SaSkymapTile.tile.area)).filter(
-        SaSkymapTile.probdensity >= probdensity_subq.c.min_probdensity,
-        SaSkymapTile.localization_id == localization.id,
-    )
-
-    # finally we can execute this cumprob_query and return 1 - the result
-    with Session(sa_engine) as session:
-        cumprob = session.execute(cumprob_query).fetchall()
-
-    return 1 - cumprob[0][0]
-
-
 def pcc(r: list[float], m: list[float]):
     """
     Probability of chance coincidence calculation (originally from
@@ -375,54 +320,6 @@ def host_association(
     # save the host galaxy dataframe to the TargetExtra "Host Galaxies" keyword
     _save_host_galaxy_df(ret_df, target)
     return ret_df
-
-
-def get_eventcandidate_default_distance(target_id: int, nonlocalized_event_name: str):
-
-    # first check if this target has a redshift associated with it
-    targ = Target.objects.get(id=target_id)
-    if targ.redshift is not None and not np.isnan(targ.redshift):
-        targ_dist = cosmo.luminosity_distance(targ.redshift).to(u.Mpc).value
-        targ_dist_err = cosmo.luminosity_distance(1e-3).to(u.Mpc).value
-        return targ_dist, targ_dist_err
-
-    # then try to get out the host galaxy json file from target extra
-    hosts = TargetExtra.objects.filter(target_id=target_id, key="Host Galaxies")
-    if not hosts.count():
-        return _distance_at_healpix(nonlocalized_event_name, target_id)
-
-    host_df = pd.read_json(io.StringIO(hosts[0].value))  # since we store the host info as a json str in the db
-    if not len(host_df):
-        return _distance_at_healpix(nonlocalized_event_name, target_id)
-
-    # if we've gotten to this point then the target has host galaxies associated with it!
-    # first thing we need to do is assign a rank ordering to the various catalogs,
-    # this will help later
-    host_df["_rank_order"] = host_df.Source.replace(GALAXY_CATALOG_RANKING)
-    host_df = host_df.sort_values(by=["_rank_order", "PCC"])
-
-    # because we already sorted the dataframe by our "preferred" catalogs, we can
-    # just always take the distances from the first row and return them
-    # start with user-provided host spec z's
-    userz_distance_hosts = host_df[host_df.z_type == "user spec-z"]
-    ind_distance_hosts = host_df[host_df.z_type == "z ind."]
-    specz_hosts = host_df[host_df.z_type.str.contains("spec-z")]
-    if len(userz_distance_hosts):
-        to_ret = userz_distance_hosts.iloc[0]
-
-    # then z-indep host distances
-    elif len(ind_distance_hosts):
-        to_ret = ind_distance_hosts.iloc[0]
-
-    # then spec-z's
-    elif len(specz_hosts):
-        to_ret = specz_hosts.iloc[0]
-
-    # then photo-z's
-    else:
-        to_ret = host_df.iloc[0]
-
-    return to_ret.Dist, to_ret.DistErr
 
 
 def point_source_association(target_id: int, radius: float = 2):
@@ -546,24 +443,3 @@ def run_mpc(target_id: int) -> None:
         save_score_to_targetextra(target, "mpc_match_date", latest_det.timestamp)
     else:
         save_score_to_targetextra(target, "mpc_match_name", None)
-
-
-def _localization_from_name(nonlocalized_event_name, max_time=Time.now()):
-    """Find the most recenet LocalizationEvent object from the nonlocalized event name"""
-    # first find the localization to use
-    localization_queryset = NonLocalizedEvent.objects.filter(event_id=nonlocalized_event_name)[0]
-
-    all_localizations = EventLocalization.objects.filter(nonlocalizedevent_id=localization_queryset.id)
-
-    all_localizations_sorted = sorted(all_localizations, key=lambda x: x.date)
-
-    # now choose the most recent localization
-    localization = all_localizations_sorted[0]
-    if len(all_localizations_sorted) > 1:
-        for loc in all_localizations_sorted[1:]:
-            curr_loc_time = Time(localization.date, format="datetime")
-            test_loc_time = Time(loc.date, format="datetime")
-            if test_loc_time > curr_loc_time and test_loc_time <= max_time:
-                localization = loc
-
-    return localization
