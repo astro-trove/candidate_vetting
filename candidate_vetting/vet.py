@@ -8,14 +8,9 @@ import logging
 
 import numpy as np
 import pandas as pd
-from scipy.stats import norm, rv_continuous
-from scipy.integrate import trapezoid
 
 from astropy.utils.introspection import minversion
 
-import warnings
-
-from astropy.coordinates import SkyCoord
 from astropy import units as u
 from astropy.time import Time
 
@@ -98,11 +93,6 @@ AGN_ASSOC_RADIUS = 2  # 2 arcsec, as used in Franz+25 and Vieira+26
 # Pcc score than this
 PCC_THRESHOLD = 0.15  # this is the value used in Rastinejad+2022
 
-# upper / lower bounds on distance for computing normal / asymmetric Gaussian
-# distributions
-D_LIM_LOWER = 1e-5  # 0.00001 Mpc
-D_LIM_UPPER = 1e4  # 10,000 Mpc
-
 # rank order of the galaxy catalogs for getting the "default" distance to this transient
 # this is kinda arbitrary, but generally I consider
 # 1) is this a redshift catalog or a galaxy distance catalog? An actual galaxy distance
@@ -123,62 +113,6 @@ GALAXY_CATALOGS = [
 ]
 
 GALAXY_CATALOG_RANKING = {c.__name__: i for i, c in enumerate(GALAXY_CATALOGS)}
-
-
-class AsymmetricGaussian(rv_continuous):
-    """
-    Custom Asymmetric Gaussian distribution for uneven uncertainties
-    """
-
-    def _pdf_unnorm(self, x, mean, unc_minus, unc_plus):
-        """**Unnormalized** asymmetric Gaussian PDF"""
-        # piecewise return a Gaussian depending on the side of the mean you are on
-        where_minus = np.where(x < mean)[0]
-        where_plus = np.where(x >= mean)[0]
-
-        minus_dist = np.exp(
-            -0.5 * ((x[where_minus] - mean[where_minus]) / unc_minus[where_minus]) ** 2
-        )  # Left side Gaussian-like
-        plus_dist = np.exp(
-            -0.5 * ((x[where_plus] - mean[where_plus]) / unc_plus[where_plus]) ** 2
-        )  # Right side Gaussian-like
-
-        return np.concatenate((minus_dist, plus_dist))
-
-    def _pdf(self, x, mean, unc_minus, unc_plus, integ_a, integ_b):
-        """**Normalized** asymmetric Gaussian PDF"""
-        # unclear why, but even when floats are passed to this function for
-        # args mean, unc_minus, unc_plus, integ_a, integ_b, they become lists
-        # of the same value repeated len(x) times
-
-        # numerically integrate asymmetric Gaussian, for normalization
-        integ_x = np.linspace(integ_a[0], integ_b[0], x.shape[0])
-        integ = np_trapz_fn(y=self._pdf_unnorm(integ_x, mean, unc_minus, unc_plus), x=integ_x)
-        integ_norm = 1 / integ
-
-        # return unnormalized PDF multiplied by normalization factor
-        return self._pdf_unnorm(x, mean, unc_minus, unc_plus) * integ_norm
-
-
-def _localization_from_name(nonlocalized_event_name, max_time=Time.now()):
-    """Find the most recenet LocalizationEvent object from the nonlocalized event name"""
-    # first find the localization to use
-    localization_queryset = NonLocalizedEvent.objects.filter(event_id=nonlocalized_event_name)[0]
-
-    all_localizations = EventLocalization.objects.filter(nonlocalizedevent_id=localization_queryset.id)
-
-    all_localizations_sorted = sorted(all_localizations, key=lambda x: x.date)
-
-    # now choose the most recent localization
-    localization = all_localizations_sorted[0]
-    if len(all_localizations_sorted) > 1:
-        for loc in all_localizations_sorted[1:]:
-            curr_loc_time = Time(localization.date, format="datetime")
-            test_loc_time = Time(loc.date, format="datetime")
-            if test_loc_time > curr_loc_time and test_loc_time <= max_time:
-                localization = loc
-
-    return localization
 
 
 def localization_sequence_from_name(nonlocalized_event_name):
@@ -409,9 +343,7 @@ def host_association(
         df = cat.to_standardized_catalog(df)
 
         # some extra cleaning before continuing
-        df = df.dropna(
-            subset=["default_mag", "ra", "dec"]
-        )  # drop rows without the information we need
+        df = df.dropna(subset=["default_mag", "ra", "dec"])  # drop rows without the information we need
         df["trove_uniq"] = df["trove_uniq"].astype(int)  # set to an int
 
         # copy the ang_dist column to a column called "offset" for
@@ -443,136 +375,6 @@ def host_association(
     # save the host galaxy dataframe to the TargetExtra "Host Galaxies" keyword
     _save_host_galaxy_df(ret_df, target)
     return ret_df
-
-
-def _get_nle_distance_pdf(
-    lumdist_array: np.ndarray,
-    nonlocalized_event_name: str,
-    target_id,
-    max_time=Time.now(),
-):
-    # find the distance at the healpix
-    dist, dist_err = _distance_at_healpix(nonlocalized_event_name, target_id, max_time=max_time)
-
-    # let user know about hard-coded bounds on luminosity distance array
-    warnings.warn(
-        f"Using hard-coded D_LIM_LOWER = {D_LIM_LOWER} and "
-        + f"D_LIM_UPPER = {D_LIM_UPPER} to construct log-spaced "
-        + "distance array for calculating distance probability "
-        + "distribution functions"
-    )
-
-    test_pdf = norm.pdf(lumdist_array, loc=dist, scale=dist_err)
-    return test_pdf
-
-
-def host_distance_match(
-    host_df: pd.DataFrame,
-    target_id: int,
-    nonlocalized_event_name: str,
-    max_time: Time = Time.now(),
-):
-    """
-    Compute integrated joint probability (Bhattacharyya coefficient) of
-    putative host galaxies' distance distributions and nonlocalized event
-    distance distribution.
-
-    Parameters
-    ----------
-    host_df : pd.DataFrame
-        Dataframe containing information on host galaxies
-    target_id : int
-        ID for target
-    nonlocalized_event_name : str
-        Name for nonlocalized event
-    max_time : Time, optional
-        Time at which to extract nonlocalized event localization;
-        default is Time.now()
-
-    Returns
-    -------
-    host_df : pd.DataFrame
-        Dataframe containing information on host galaxy, with added integrated
-        joint probability
-
-    """
-
-    if not len(host_df):
-        host_df["dist_norm_joint_prob"] = []
-        return host_df  # continue to return an empty dataframe here, but with the correct columns
-
-    # now crossmatch this distance to the host galaxy dataframe
-    _lumdist = np.linspace(D_LIM_LOWER, D_LIM_UPPER, int(10 * D_LIM_UPPER))
-
-    test_pdf = _get_nle_distance_pdf(_lumdist, nonlocalized_event_name, target_id, max_time=max_time)
-    host_pdfs = np.array(
-        [
-            AsymmetricGaussian().pdf(
-                _lumdist,
-                mean=row.lumdist,
-                unc_minus=row.lumdist_neg_err,
-                unc_plus=row.lumdist_pos_err,
-                integ_a=1e-9,
-                integ_b=_lumdist[-1],
-            )
-            for _, row in host_df.iterrows()
-        ]
-    )
-    joint_prob = host_pdfs * test_pdf
-
-    # finally, compute the Bhattacharyya coefficient for the overlap of these
-    # two distributions. https://en.wikipedia.org/wiki/Bhattacharyya_distance
-    # This coefficient is non-parametric which is good for our Asymmetric Gaussian
-    # Original paper: http://www.jstor.org/stable/25047806
-    host_df["dist_norm_joint_prob"] = trapezoid(np.sqrt(joint_prob), x=_lumdist, axis=1)
-    return host_df
-
-
-def get_distance_score(host_df, target_id, nonlocalized_event_name):
-    """
-    This get's the host score from the input host_df by first prioritizing target specific redshifts,
-    then spec-z's, and then photo-z's. It assumes that any potential host within a
-    Pcc < PCC_THRESHOLD is equally probable. It also uses the maximum probability galaxy
-    to soften the effects of poor distance associations.
-    """
-    # first check if this target has a measured redshift
-    targ = Target.objects.get(id=target_id)
-    if targ.redshift is not None and not np.isnan(targ.redshift):
-        _lumdist = np.linspace(D_LIM_LOWER, D_LIM_UPPER, int(10 * D_LIM_UPPER))
-        nle_pdf = _get_nle_distance_pdf(_lumdist, nonlocalized_event_name, target_id)
-        targ_dist = cosmo.luminosity_distance(targ.redshift).to(u.Mpc).value
-        targ_dist_err = cosmo.luminosity_distance(1e-3).to(u.Mpc).value
-        targ_pdf = norm.pdf(_lumdist, loc=targ_dist, scale=targ_dist_err)
-        return trapezoid(np.sqrt(targ_pdf * nle_pdf), x=_lumdist), None  # None because there is no host name
-
-    # then use the redshift of user-uploaded host galaxies
-    userz_distance_hosts = host_df[host_df.z_type == "user spec-z"]
-    userz_distance_hosts.reset_index(inplace=True)  # avoid iloc exception
-    if len(userz_distance_hosts):
-        max_score = userz_distance_hosts.dist_norm_joint_prob.max()
-        max_score_host_name = userz_distance_hosts.iloc[userz_distance_hosts["dist_norm_joint_prob"].idxmax()]["name"]
-        return max_score, max_score_host_name
-
-    # then use the redshift independent measurements of distances
-    ind_distance_hosts = host_df[host_df.z_type == "z ind."]
-    ind_distance_hosts.reset_index(inplace=True)  # avoid iloc exception
-    if len(ind_distance_hosts):
-        max_score = ind_distance_hosts.dist_norm_joint_prob.max()
-        max_score_host_name = ind_distance_hosts.iloc[ind_distance_hosts["dist_norm_joint_prob"].idxmax()]["name"]
-        return max_score, max_score_host_name
-
-    # then use the specz hosts
-    specz_hosts = host_df[host_df.z_type.str.contains("spec-z")]
-    specz_hosts.reset_index(inplace=True)  # avoid iloc exception
-    if len(specz_hosts):
-        max_score = specz_hosts.dist_norm_joint_prob.max()
-        max_score_host_name = specz_hosts.iloc[specz_hosts["dist_norm_joint_prob"].idxmax()]["name"]
-        return max_score, max_score_host_name
-
-    # then if we don't know the spec-z or have an independent distance measure use the photo-z's
-    max_score = host_df.dist_norm_joint_prob.max()
-    max_score_host_name = host_df.iloc[host_df["dist_norm_joint_prob"].idxmax()]["name"]
-    return max_score, max_score_host_name
 
 
 def get_eventcandidate_default_distance(target_id: int, nonlocalized_event_name: str):
@@ -710,66 +512,6 @@ def agn_association_2d(target_id: int, radius: float = AGN_ASSOC_RADIUS):
     return ret_df
 
 
-def agn_distance_match(
-    agn_df: pd.DataFrame,
-    target_id: int,
-    nonlocalized_event_name: str,
-    max_time: Time = Time.now(),
-):
-    """
-    Compute integrated joint probability (Bhattacharyya coefficient) of
-    AGN distance distributions and nonlocalized event distance distribution.
-
-    Parameters
-    ----------
-    agn_df : pd.DataFrame
-        Dataframe containing information on potential associated AGN(s)
-    target_id : int
-        ID for target
-    nonlocalized_event_name : str
-        Name for nonlocalized event
-    max_time : Time, optional
-        Time at which to extract nonlocalized event localization;
-        default is Time.now()
-
-    Returns
-    -------
-    agn_df : pd.DataFrame
-        Dataframe containing information on AGN(s), with added integrated
-        joint probability
-
-    """
-    if not len(agn_df):
-        agn_df["dist_norm_joint_prob"] = []
-        return agn_df  # continue to return an empty dataframe here, but with the correct columns
-
-    # now crossmatch this distance to the to the AGNs dataframe
-    _lumdist = np.linspace(D_LIM_LOWER, D_LIM_UPPER, int(10 * D_LIM_UPPER))
-
-    test_pdf = _get_nle_distance_pdf(_lumdist, nonlocalized_event_name, target_id, max_time=max_time)
-    agn_pdfs = np.array(
-        [
-            AsymmetricGaussian().pdf(
-                _lumdist,
-                mean=row.lumdist,
-                unc_minus=row.lumdist_neg_err,
-                unc_plus=row.lumdist_pos_err,
-                integ_a=1e-9,
-                integ_b=_lumdist[-1],
-            )
-            for _, row in agn_df.iterrows()
-        ]
-    )
-    joint_prob = agn_pdfs * test_pdf
-
-    # finally, compute the Bhattacharyya coefficient for the overlap of these
-    # two distributions. https://en.wikipedia.org/wiki/Bhattacharyya_distance
-    # This coefficient is non-parametric which is good for our Asymmetric Gaussian
-    # Original paper: http://www.jstor.org/stable/25047806
-    agn_df["dist_norm_joint_prob"] = trapezoid(np.sqrt(joint_prob), x=_lumdist, axis=1)
-    return agn_df
-
-
 def run_mpc(target_id: int) -> None:
 
     target = Target.objects.get(id=target_id)
@@ -804,3 +546,24 @@ def run_mpc(target_id: int) -> None:
         save_score_to_targetextra(target, "mpc_match_date", latest_det.timestamp)
     else:
         save_score_to_targetextra(target, "mpc_match_name", None)
+
+
+def _localization_from_name(nonlocalized_event_name, max_time=Time.now()):
+    """Find the most recenet LocalizationEvent object from the nonlocalized event name"""
+    # first find the localization to use
+    localization_queryset = NonLocalizedEvent.objects.filter(event_id=nonlocalized_event_name)[0]
+
+    all_localizations = EventLocalization.objects.filter(nonlocalizedevent_id=localization_queryset.id)
+
+    all_localizations_sorted = sorted(all_localizations, key=lambda x: x.date)
+
+    # now choose the most recent localization
+    localization = all_localizations_sorted[0]
+    if len(all_localizations_sorted) > 1:
+        for loc in all_localizations_sorted[1:]:
+            curr_loc_time = Time(localization.date, format="datetime")
+            test_loc_time = Time(loc.date, format="datetime")
+            if test_loc_time > curr_loc_time and test_loc_time <= max_time:
+                localization = loc
+
+    return localization
