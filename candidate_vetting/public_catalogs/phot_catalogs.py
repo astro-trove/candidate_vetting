@@ -59,7 +59,10 @@ class TNS_Phot(PhotCatalog):
         
         Returns
         -------
-        True if we found more photometry and updated it, False if not
+        n_new_phot : int
+            Number of new photometry points added from the TNS
+        tns_results : dict
+            Results dictionary from the TNS response
         """
 
         # get the tns base name
@@ -93,15 +96,15 @@ class TNS_Phot(PhotCatalog):
         response, time_to_reset = self._post_to_tns(get_url, requests_kwargs, timelimit)
 
         if response is None or response.status_code != 200:
-            return False
+            return False, {}
 
         try:
             data = response.json()["data"]
         except Exception as exc:
             logger.exception(f"Retrieving the TNS data failed with {exc}")
-            return False
+            return False, {}
 
-        return self._add_phot(target, data)
+        return self._add_phot(target, data), data
 
     def _add_phot(self, target, tns_reply):
         """
@@ -114,7 +117,7 @@ class TNS_Phot(PhotCatalog):
         if target.ra != tns_ra or target.dec != tns_dec:
             target.ra = tns_ra
             target.dec = tns_dec
-            target.save()
+            target.save()  # TODO: this might need to be removed to work with SAGUARO
             logger.info(f"Updated coordinates to {target.ra:.6f}, {target.dec:.6f} based on TNS")
 
         # now we can ingest any new photometry
@@ -124,8 +127,10 @@ class TNS_Phot(PhotCatalog):
             value = {"filter": candidate["filters"]["name"]}
             if candidate["flux"]:  # detection
                 value["magnitude"] = float(candidate["flux"])
-            else:
+            elif candidate["limflux"]:  # nondetection
                 value["limit"] = float(candidate["limflux"])
+            else:  # something else, maybe an FRB; don't ingest it
+                continue
             if candidate["fluxerr"]:  # not empty or zero
                 value["error"] = float(candidate["fluxerr"])
             created = create_phot(
@@ -139,7 +144,7 @@ class TNS_Phot(PhotCatalog):
         if n_new_phot:
             logger.info(f"Added {n_new_phot:d} photometry points from the TNS")
 
-        return bool(n_new_phot)
+        return n_new_phot
 
     def _post_to_tns(self, get_url, requests_kwargs, timelimit):
 
