@@ -45,17 +45,9 @@ def create_phot(target, time, fluxdict, source):
     if not fluxdict:
         warnings.warn("fluxdict is empty")
     elif "magnitude" in fluxdict.keys() and not ("error" in fluxdict.keys()):
-        warnings.warn(
-            "Data point contains a magnitude but not an associated " + "error"
-        )
-    elif not (
-        ("magnitude" in fluxdict.keys() and "error" in fluxdict.keys())
-        ^ ("limit" in fluxdict.keys())
-    ):
-        raise ValueError(
-            "Must pass EITHER a magnitude and associated error "
-            + "OR a limit, but not both"
-        )
+        warnings.warn("Data point contains a magnitude but not an associated " + "error")
+    elif not (("magnitude" in fluxdict.keys() and "error" in fluxdict.keys()) ^ ("limit" in fluxdict.keys())):
+        raise ValueError("Must pass EITHER a magnitude and associated error " + "OR a limit, but not both")
 
     _, created = ReducedDatum.objects.get_or_create(
         timestamp=time,
@@ -90,9 +82,7 @@ class Greatest(Func):
     output_field = FloatField()
 
 
-def cone_search_q3c(
-    queryset, ra, dec, radius=RADIUS_ARCSEC, ra_colname="ra", dec_colname="dec"
-):
+def cone_search_q3c(queryset, ra, dec, radius=RADIUS_ARCSEC, ra_colname="ra", dec_colname="dec"):
     f"""Do a cone search with q3c on the provided QuerySet
 
     Parameters
@@ -116,12 +106,12 @@ def cone_search_q3c(
         The filtered query set
     """
 
-    return queryset.filter(ConeSearch(ra, dec, ra_colname, dec_colname, radius / 3600))
+    return queryset.filter(ConeSearch(ra, dec, ra_colname, dec_colname, radius / 3600)).annotate(
+        ang_dist=AngDist(ra_colname, dec_colname, ra, dec)
+    )
 
 
-def pcc_q3c(
-    queryset, ra, dec, pcc_max, mag_colname, ra_colname="ra", dec_colname="dec"
-):
+def pcc_q3c(queryset, ra, dec, pcc_max, mag_colname, ra_colname="ra", dec_colname="dec"):
     """Do a cut on Pcc with q3c on the provided QuerySet. Pcc is from Bloom+2002 and
     we use the re-calibration from Berger2010.
 
