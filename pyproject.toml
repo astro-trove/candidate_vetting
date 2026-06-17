@@ -53,7 +53,7 @@ Repository = "https://github.com/astro-trove/candidate_vetting"
 
 [tool.setuptools.packages.find]
 where = ["."]
-
+include = ["candidate_vetting*"]
 [tool.ruff]
 line-length = 120
 target-version = "py310"
