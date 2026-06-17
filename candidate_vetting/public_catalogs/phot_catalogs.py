@@ -36,7 +36,6 @@ from django.db.models.functions import Sqrt
 
 from .catalog import PhotCatalog
 from .util import _QUERY_METHOD_DOCSTRING, RADIUS_ARCSEC, create_phot
-from pyasassn.client import SkyPatrolClient
 
 from trove_targets.models import Target
 
@@ -188,27 +187,6 @@ class TNS_Phot(PhotCatalog):
     def _set_bot_tns_marker(self, BOT_ID: str = None, BOT_NAME: str = None):
         tns_marker = 'tns_marker{"tns_id": "' + str(BOT_ID) + '", "type": "bot", "name": "' + BOT_NAME + '"}'
         return tns_marker
-
-
-class ASASSN_SkyPatrol(PhotCatalog):
-    """ASASSN Forced photometry server"""
-
-    def query(self, ra: float, dec: float, radius: float = RADIUS_ARCSEC):
-        f"""Query the ASASSN SkyPatrol forced photometry service
-
-        {_QUERY_METHOD_DOCSTRING}
-        """
-        client = SkyPatrolClient()
-        light_curve = client.cone_search(
-            ra_deg=ra,
-            dec_deg=dec,
-            radius=radius,
-            units="arcsec",
-            download=True,
-            threads=self.nthreads,
-        )
-
-        return light_curve
 
 
 class ATLAS_Forced_Phot(PhotCatalog):
