@@ -51,10 +51,8 @@ dev = [
 Homepage = "https://github.com/astro-trove/candidate_vetting"
 Repository = "https://github.com/astro-trove/candidate_vetting"
 
-[tool.setuptools]
-packages = [
-    "candidate_vetting",
-]
+[tool.setuptools.packages.find]
+where = ["."]
 
 [tool.ruff]
 line-length = 120
