@@ -1548,3 +1548,39 @@ class UserGalaxyQ3C(models.Model):
     class Meta:
         managed = True
         db_table = "usergalaxy_q3c"
+
+
+class EvccQ3C(models.Model):
+    eid = models.AutoField(primary_key=True)
+    evcc = models.IntegerField()
+    vcc = models.CharField(max_length=4, blank=True, null=True)
+    ngc = models.CharField(max_length=5, blank=True, null=True)
+    ra = models.FloatField()
+    dec = models.FloatField()
+    fra = models.FloatField(blank=True, null=True)
+    fdec = models.FloatField(blank=True, null=True)
+    fiber_offset = models.FloatField(blank=True, null=True)
+    srvel = models.FloatField(blank=True, null=True)
+    nrvel = models.FloatField(blank=True, null=True)
+    mem_infall = models.CharField(max_length=1, blank=True, null=True)
+    mem_vcc = models.CharField(max_length=1, blank=True, null=True)
+    pmorph = models.CharField(max_length=8, blank=True, null=True)
+    smorph = models.CharField(max_length=2, blank=True, null=True)
+    nmorph = models.IntegerField(blank=True, null=True)
+    vmorph = models.CharField(max_length=19, blank=True, null=True)
+    umag = models.FloatField(blank=True, null=True)
+    e_umag = models.FloatField(blank=True, null=True)
+    gmag = models.FloatField(blank=True, null=True)
+    e_gmag = models.FloatField(blank=True, null=True)
+    rmag = models.FloatField(blank=True, null=True)
+    e_rmag = models.FloatField(blank=True, null=True)
+    imag = models.FloatField(blank=True, null=True)
+    e_imag = models.FloatField(blank=True, null=True)
+    zmag = models.FloatField(blank=True, null=True)
+    e_zmag = models.FloatField(blank=True, null=True)
+    rad = models.FloatField(blank=True, null=True)
+    r50 = models.FloatField(blank=True, null=True)
+
+    class Meta:
+        managed = False
+        db_table = "evcc_q3c"

@@ -54,6 +54,7 @@ from candidate_vetting.public_catalogs.static_catalogs import (
     NedLvs,
     # TwoMass,
     DesiDr1,
+    ExtendedVirgoClusterCatalog,
 )
 from candidate_vetting.public_catalogs.dynamic_catalogs import UserGalaxy
 
@@ -99,6 +100,7 @@ PCC_THRESHOLD = 0.15  # this is the value used in Rastinejad+2022
 # 2) Does this catalog have spec-z's or photo-z's? A spec-z catalog is preferred.
 GALAXY_CATALOGS = [
     UserGalaxy,
+    ExtendedVirgoClusterCatalog,
     GladePlus,
     Gwgc,
     Hecate2,

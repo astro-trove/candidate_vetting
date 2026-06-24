@@ -33,6 +33,7 @@ from ..models import (
     Sdss12PhotozQ3C,
     TwomassQ3C,
     ZtfVarstarQ3C,
+    EvccQ3C,
 )
 
 
@@ -56,6 +57,22 @@ class AsassnVariableStar(StaticCatalog):
     """
 
     catalog_model = AsassnQ3C
+
+
+@citation(
+    doi="10.1088/0067-0049/215/2/22",
+    ads_bibcode="2014ApJS..215...22K",
+    data_url="https://doi.org/10.26093/cds/vizier.22150022",
+)
+class ExtendedVirgoClusterCatalog(StaticCatalog):
+    catalog_model = EvccQ3C
+    ra_colname = "ra"
+    dec_colname = "dec"
+    mag_colname = "rmag"
+    colmap = {"eid": "trove_uniq", "evcc": "name", "ra": "ra", "dec": "dec", "rmag": "default_mag"}
+
+    def to_standardized_catalog(self, df):
+        return self._standardize_df(df)
 
 
 @citation(
@@ -169,9 +186,9 @@ class DesiSpec(StaticCatalog):
 
     def __init__(self):
         # flux_r is in nanomaggy
-        self.catalog_model.objects = self.catalog_model.objects.filter(
-            flux_r__gt=0
-        ).annotate(default_mag=22.5 - 2.5 * _Log10("flux_r"))
+        self.catalog_model.objects = self.catalog_model.objects.filter(flux_r__gt=0).annotate(
+            default_mag=22.5 - 2.5 * _Log10("flux_r")
+        )
 
         self.colmap = {
             "did": "trove_uniq",
@@ -248,9 +265,7 @@ class GladePlus(StaticCatalog):
         df["z_neg_err"] = df.z_err
         df["z_pos_err"] = df.z_err
 
-        lumdist_err = pd.Series(
-            cosmo.luminosity_distance(df.z_err).to(u.Mpc).value, index=df.index
-        )
+        lumdist_err = pd.Series(cosmo.luminosity_distance(df.z_err).to(u.Mpc).value, index=df.index)
         df.lumdist_err = df.lumdist_err.fillna(lumdist_err)
         df["lumdist_neg_err"] = df.lumdist_err
         df["lumdist_pos_err"] = df.lumdist_err
@@ -306,9 +321,7 @@ class Hecate1(StaticCatalog):
         self.colmap["lumdist_neg_err"] = "lumdist_neg_err"
         self.colmap["lumdist_pos_err"] = "lumdist_pos_err"
 
-        df["z_type"] = df.apply(
-            lambda row: "z ind." if row.dmethod == "N" else "spec-z", axis=1
-        )
+        df["z_type"] = df.apply(lambda row: "z ind." if row.dmethod == "N" else "spec-z", axis=1)
 
         df["submitter"] = ""
 
@@ -353,9 +366,7 @@ class Hecate2(StaticCatalog):
         self.colmap["lumdist_pos_err"] = "lumdist_pos_err"
         # self.colmap["z"] = "z"
 
-        df["z_type"] = df.apply(
-            lambda row: "z ind." if row.f_dist == 0 else "spec-z", axis=1
-        )
+        df["z_type"] = df.apply(lambda row: "z ind." if row.f_dist == 0 else "spec-z", axis=1)
 
         df["submitter"] = ""
 
@@ -384,9 +395,9 @@ class LsDr9North(StaticCatalog):
 
     def __init__(self):
         # flux_r is in nanomaggy
-        self.catalog_model.objects = self.catalog_model.objects.filter(
-            flux_r__gt=0
-        ).annotate(default_mag=22.5 - 2.5 * _Log10("flux_r"))
+        self.catalog_model.objects = self.catalog_model.objects.filter(flux_r__gt=0).annotate(
+            default_mag=22.5 - 2.5 * _Log10("flux_r")
+        )
 
         self.colmap = {
             "lid": "trove_uniq",
@@ -422,9 +433,7 @@ class LsDr9North(StaticCatalog):
 
     def query(self, ra, dec, radius=RADIUS_ARCSEC):
         query_set = super().query(ra, dec, radius)
-        return query_set.exclude(
-            default_mag__lt=18, type="PSF"
-        )  # exclude PSF magnitudes that are likely point sources
+        return query_set.exclude(default_mag__lt=18, type="PSF")  # exclude PSF magnitudes that are likely point sources
 
 
 @citation(
@@ -447,9 +456,9 @@ class LsDr10South(StaticCatalog):
 
     def __init__(self):
         # flux_r is in nanomaggy
-        self.catalog_model.objects = self.catalog_model.objects.filter(
-            flux_r__gt=0
-        ).annotate(default_mag=22.5 - 2.5 * _Log10("flux_r"))
+        self.catalog_model.objects = self.catalog_model.objects.filter(flux_r__gt=0).annotate(
+            default_mag=22.5 - 2.5 * _Log10("flux_r")
+        )
 
         self.colmap = {
             "lid": "trove_uniq",
@@ -505,9 +514,7 @@ class Milliquas(StaticCatalog):
 
         num_decimal = Func(
             Func(
-                Cast(
-                    F("z"), CharField()
-                ),  # split_part only works with CharField, need to cast first
+                Cast(F("z"), CharField()),  # split_part only works with CharField, need to cast first
                 Value("."),
                 Value(2),
                 function="split_part",
@@ -525,9 +532,7 @@ class Milliquas(StaticCatalog):
                 When(num_decimal=2, then=F("z") * 0.01),
                 default=Value(1e-3),
             ),  # this computes the z_err based on the assumptions outlined in the docs for this catalog
-            z_type=Case(
-                When(num_decimal__lte=2, then=Value("photo-z")), default=Value("spec-z")
-            ),
+            z_type=Case(When(num_decimal__lte=2, then=Value("photo-z")), default=Value("spec-z")),
         )
 
         # now that we have these annotations, we can define the colmap
@@ -602,9 +607,7 @@ class NedLvs(StaticCatalog):
         df["z_neg_err"] = df.z_err
         df["z_pos_err"] = df.z_err
 
-        lumdist_err = pd.Series(
-            cosmo.luminosity_distance(df.z_err).to(u.Mpc).value, index=df.index
-        )
+        lumdist_err = pd.Series(cosmo.luminosity_distance(df.z_err).to(u.Mpc).value, index=df.index)
         # when lumdist_err is NaN is when the z_err column is also NaN
         # so we assume an uncertainty on the distance of ~4.5 Mpc (the conversion
         # from z_err = 1e-3 to Mpc)
@@ -659,9 +662,7 @@ class Ps1Galaxy(Ps1):
 
     def query(self, ra, dec, radius=RADIUS_ARCSEC):
         query_set = super().query(ra, dec, radius)
-        return query_set.filter(
-            ps_score__lte=PS1_POINT_SOURCE_THRESHOLD, rmeanpsfmag__gt=0
-        )
+        return query_set.filter(ps_score__lte=PS1_POINT_SOURCE_THRESHOLD, rmeanpsfmag__gt=0)
 
 
 @citation(doi="10.1093/mnras/staa2587", ads_bibcode="2021MNRAS.500.1633B")
@@ -674,9 +675,7 @@ class Ps1PointSource(Ps1):
 
     def query(self, ra, dec, radius=RADIUS_ARCSEC):
         query_set = super().query(ra, dec, radius)
-        return query_set.filter(
-            ps_score__gt=PS1_POINT_SOURCE_THRESHOLD, prob_galaxy__lt=0.7
-        )
+        return query_set.filter(ps_score__gt=PS1_POINT_SOURCE_THRESHOLD, prob_galaxy__lt=0.7)
 
 
 @citation()
