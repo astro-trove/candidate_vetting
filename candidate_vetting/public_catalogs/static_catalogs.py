@@ -65,6 +65,7 @@ class AsassnVariableStar(StaticCatalog):
     data_url="https://doi.org/10.26093/cds/vizier.22150022",
 )
 class ExtendedVirgoClusterCatalog(StaticCatalog):
+    name = "Extended Virgo Cluster Catalog (EVCC)"
     catalog_model = EvccQ3C
     ra_colname = "ra"
     dec_colname = "dec"
@@ -101,6 +102,7 @@ class Cosmicflows4(StaticCatalog):
     with photometry catalogs (which are also included in the citation list)
     """
 
+    name = "Cosmicflows-4"
     catalog_model = Cosmicflows4Q3C
     ra_colname = "raj2000"
     dec_colname = "dej2000"
@@ -139,6 +141,7 @@ class DesiDr1(StaticCatalog):
     redshifts
     """
 
+    name = "DESI DR1"
     catalog_model = DesiDr1Q3C
     ra_colname = "target_ra"
     dec_colname = "target_dec"
@@ -179,6 +182,7 @@ class DesiDr1(StaticCatalog):
 
 
 class DesiSpec(StaticCatalog):
+    name = "DESI Spectroscopic Catalog"
     catalog_model = DesiSpecQ3C
     ra_colname = "target_ra"
     dec_colname = "target_dec"
@@ -233,6 +237,7 @@ class Gaiadr3Variable(StaticCatalog):
 
 @citation(doi="10.1093/mnras/stac1443", ads_bibcode="2022MNRAS.514.1403D")
 class GladePlus(StaticCatalog):
+    name = "GLADE+"
     catalog_model = GladePlusQ3C
     mag_colname = "b"
 
@@ -275,6 +280,7 @@ class GladePlus(StaticCatalog):
 
 @citation(doi="10.1088/0264-9381/28/8/085016", ads_bibcode="2011CQGra..28h5016W")
 class Gwgc(StaticCatalog):
+    name = "GWGC"
     catalog_model = GwgcQ3C
     colmap = {
         "gid": "trove_uniq",
@@ -298,6 +304,7 @@ class Gwgc(StaticCatalog):
 
 @citation(doi="10.1093/mnras/stab1799", ads_bibcode="2021MNRAS.506.1896K")
 class Hecate1(StaticCatalog):
+    name = "HECATE"
     catalog_model = Hecate1Q3C
     mag_colname = "r"
     colmap = {
@@ -337,6 +344,7 @@ class Hecate1(StaticCatalog):
     data_url="https://cdsarc.cds.unistra.fr/viz-bin/cat/J/MNRAS/548/G522#/article",
 )
 class Hecate2(StaticCatalog):
+    name = "HECATE"
     catalog_model = Hecate2Q3C
     ra_colname = "radeg"
     dec_colname = "dedeg"
@@ -390,6 +398,7 @@ class LsDr9North(StaticCatalog):
     photo-z's computed following Zhou et al 2023
     """
 
+    name = "LS DR9 North"
     catalog_model = LsDr9NorthQ3C
     dec_colname = "dec"
 
@@ -451,6 +460,7 @@ class LsDr10South(StaticCatalog):
     photo-z's computed following Zhou et al 2023
     """
 
+    name = "LS DR10 South"
     catalog_model = LsDr10SouthQ3C
     dec_colname = "declination"
 
@@ -571,6 +581,7 @@ class NedLvs(StaticCatalog):
     some photometric redshifts; acquired 2 June 2025
     """
 
+    name = "NED-LVS"
     mag_colname = "m_j"
     catalog_model = NedlvsQ3C
     colmap = {
@@ -627,6 +638,7 @@ class Ps1(StaticCatalog):
     catalogue, which classifies sources as point sources, quasars, or galaxies
     """
 
+    name = "Pan-STARRS1 STRM"
     catalog_model = Ps1Q3C
     colmap = {
         "pid": "trove_uniq",
@@ -659,6 +671,8 @@ class Ps1Galaxy(Ps1):
     catalogue, which classifies sources as point sources, quasars, or galaxies,
     selecting for objects with point source score < 0.83
     """
+
+    name = "Pan-STARRS1 Galaxy Catalog"
 
     def query(self, ra, dec, radius=RADIUS_ARCSEC):
         query_set = super().query(ra, dec, radius)
@@ -699,6 +713,7 @@ class Sdss12Photoz(StaticCatalog):
     Releases 11 and 12 of SDSS
     """
 
+    name = "SDSS DR12 Photometric"
     mag_colname = "rmag"
     catalog_model = Sdss12PhotozQ3C
     colmap = {
