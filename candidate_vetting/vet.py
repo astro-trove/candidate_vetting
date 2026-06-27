@@ -272,7 +272,7 @@ def host_association(
     res = []
     for catalog in GALAXY_CATALOGS:
         cat = catalog()
-        catname = cat.__class__.__name__
+        catname = str(cat)
         if _verbose:
             logger.info(f"Querying {cat}...")
         query_set = cat.pcc_filter(ra, dec, radius=radius, pcc_max=pcc_threshold)
