@@ -165,6 +165,7 @@ class DesiDr1(StaticCatalog):
             "target_dec": "dec",
             "default_mag": "default_mag",
         }
+        self.name = "DESI DR1"
 
         # then, of course, init the super class
         super().__init__()
