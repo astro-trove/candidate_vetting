@@ -3,7 +3,6 @@ Vetting code for non-localized events with transients
 """
 
 import time
-import io
 import logging
 
 import numpy as np
@@ -11,28 +10,19 @@ import pandas as pd
 
 from astropy.utils.introspection import minversion
 
-from astropy import units as u
 from astropy.time import Time
-
-import sqlalchemy as sa
-from sqlalchemy.orm import Session
 
 from django.conf import settings
 
 from trove_mpc import Transient
 from tom_targets.models import Target, TargetExtra
-from tom_nonlocalizedevents.models import (
-    # EventCandidate,
-    EventLocalization,
-    # SkymapTile,
-    NonLocalizedEvent,
-)
-from tom_nonlocalizedevents.healpix_utils import (
-    sa_engine,
-    SaSkymapTile,
-    # uniq_to_bigintrange,
-    # update_all_credible_region_percents_for_candidates
-)
+from tom_nonlocalizedevents.models import NonLocalizedEvent
+# from tom_nonlocalizedevents.healpix_utils import (
+#     sa_engine,
+#     SaSkymapTile,
+#     uniq_to_bigintrange,
+#     update_all_credible_region_percents_for_candidates
+# )
 from tom_dataproducts.models import ReducedDatum
 
 from candidate_vetting.public_catalogs.static_catalogs import (
@@ -40,7 +30,7 @@ from candidate_vetting.public_catalogs.static_catalogs import (
     Cosmicflows4,
     GladePlus,
     Gwgc,
-    Hecate1,
+    # Hecate1,
     Hecate2,
     LsDr9North,
     LsDr10South,
@@ -112,6 +102,7 @@ GALAXY_CATALOGS = [
     Ps1Galaxy,
     Sdss12Photoz,
 ]
+
 
 
 def localization_sequence_from_name(nonlocalized_event_name):
