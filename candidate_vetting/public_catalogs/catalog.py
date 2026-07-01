@@ -53,6 +53,8 @@ class StaticCatalog(Catalog):
     ra_colname = None
     dec_colname = None
     catalog_model = None
+    # This is used for the proper name in the Galaxy Table display
+    name = None
     colmap = {}
 
     def __init__(self, verbose: bool = False):
@@ -68,6 +70,8 @@ class StaticCatalog(Catalog):
         verbose : bool, default=True
             If the class should be verbose and print a bunch of stuff (for debug)
         """
+
+        self.name = None
 
         self.catalog_type = "static"
 
@@ -145,6 +149,9 @@ class StaticCatalog(Catalog):
             raise TypeError("Missing the colmap, can't standardize dataset!")
         df = df.rename(columns=self.colmap)
         return df[list(self.colnames & set(df.columns))]
+    
+    def __repr__(self):
+        return self.name
 
 
 class PhotCatalog(Catalog):
