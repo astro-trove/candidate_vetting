@@ -71,8 +71,6 @@ class StaticCatalog(Catalog):
             If the class should be verbose and print a bunch of stuff (for debug)
         """
 
-        self.name = None
-
         self.catalog_type = "static"
 
         self.colnames = {
@@ -100,7 +98,7 @@ class StaticCatalog(Catalog):
         self.colmap = self.colmap.copy()
         self.ogcols = list(self.colmap.keys())
 
-        super().__init__(self.__class__.__name__, verbose=verbose)
+        super().__init__(self.name, verbose=verbose)
 
     def __init_subclass__(cls, *args, **kwargs):
         if not getattr(cls, "ra_colname"):
