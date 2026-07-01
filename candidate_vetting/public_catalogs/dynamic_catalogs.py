@@ -13,6 +13,7 @@ from ..models import UserGalaxyQ3C
 
 
 class UserGalaxy(StaticCatalog):
+    name = "user-submitted"
     catalog_model = UserGalaxyQ3C
 
     def __init__(self):
