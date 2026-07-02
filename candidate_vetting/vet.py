@@ -454,7 +454,14 @@ def evcc_galaxy_check(target_id: int, kron_scale: float = 2.0) -> list[dict]:
     for g in qs:
         offset_arcsec = g.ang_dist * 3600.0
         if offset_arcsec < kron_scale * g.rad:      # containment test
-            name = g.vcc or g.ngc or f"EVCC{g.evcc}"
+            #name = g.vcc or g.ngc or f"EVCC{g.evcc}"
+            if g.ngc:
+                name = f"NGC {g.ngc}"
+            elif g.vcc:
+                name = f"VCC {g.vcc}"
+            else:
+                name = f"EVCC {g.evcc}"
+
             matches.append({
                 "name":          name,
                 "offset_arcsec": round(offset_arcsec, 2),
