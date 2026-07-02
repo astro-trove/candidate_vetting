@@ -25,6 +25,10 @@ from tom_nonlocalizedevents.models import NonLocalizedEvent
 # )
 from tom_dataproducts.models import ReducedDatum
 
+import json
+from candidate_vetting.models import EvccQ3C
+from candidate_vetting.public_catalogs.util import cone_search_q3c
+
 from candidate_vetting.public_catalogs.static_catalogs import (
     # DesiSpec,
     Cosmicflows4,
@@ -400,6 +404,87 @@ def agn_association_2d(target_id: int, radius: float = AGN_ASSOC_RADIUS):
     _save_associated_agn_df(ret_df, target)
 
     return ret_df
+
+# --- EVCC (Extended Virgo Cluster Catalog) geometric association -----------
+# Constants derived once from the static evcc_q3c table (1589 rows). They let
+# us reject the ~97% of sky nowhere near Virgo with pure arithmetic, no DB hit.
+EVCC_CENTER_RA       = 187.193   # deg
+EVCC_CENTER_DEC      =   9.262   # deg
+EVCC_BOUNDING_RADIUS =  19.435   # deg, max center-to-galaxy separation
+EVCC_MAX_KRON        = 476.7     # arcsec, largest Kron radius (rad) in catalog
+
+
+def _angular_sep_deg(ra1, dec1, ra2, dec2):
+    """Great-circle separation in degrees (haversine)."""
+    ra1, dec1, ra2, dec2 = map(np.radians, (ra1, dec1, ra2, dec2))
+    a = (np.sin((dec2 - dec1) / 2) ** 2
+         + np.cos(dec1) * np.cos(dec2) * np.sin((ra2 - ra1) / 2) ** 2)
+    return float(np.degrees(2 * np.arcsin(np.sqrt(a))))
+
+
+def evcc_galaxy_check(target_id: int, kron_scale: float = 2.0) -> list[dict]:
+    """
+    Geometric association of a target with EVCC galaxies. A target is 'within'
+    a galaxy when its angular offset from the galaxy center is less than
+    kron_scale * the galaxy's Kron radius (rad). Complementary to
+    host_association(): purely geometric, catches transients projected onto
+    (incl. outskirts of) a nearby Virgo galaxy that PCC would drop.
+
+    Returns a list of match dicts (possibly empty), sorted by offset.
+    Returns [] immediately, with NO database query, for targets off the
+    EVCC footprint.
+    """
+    target = Target.objects.get(id=target_id)
+    ra, dec = target.ra, target.dec
+
+    # footprint guard: guard radius scales with kron_scale so coverage (we do not want all alerts to be vetted, only that are near to the patch of EVCC)
+    # can never silently break if the threshold is changed.
+    guard_radius = EVCC_BOUNDING_RADIUS + kron_scale * EVCC_MAX_KRON / 3600.0
+    if _angular_sep_deg(ra, dec, EVCC_CENTER_RA, EVCC_CENTER_DEC) > guard_radius:
+        return []
+
+    # cone wide enough to reach the biggest galaxy's kron_scale*rad edge
+    cone_radius = kron_scale * EVCC_MAX_KRON  # arcsec
+    qs = cone_search_q3c(
+        EvccQ3C.objects.exclude(rad=None),
+        ra, dec, radius=cone_radius, ra_colname="ra", dec_colname="dec",
+    )
+
+    matches = []
+    for g in qs:
+        offset_arcsec = g.ang_dist * 3600.0
+        if offset_arcsec < kron_scale * g.rad:      # containment test
+            name = g.vcc or g.ngc or f"EVCC{g.evcc}"
+            matches.append({
+                "name":          name,
+                "offset_arcsec": round(offset_arcsec, 2),
+                "offset_kron":   round(offset_arcsec / g.rad, 2),
+                "rad":           g.rad,
+                "r50":           g.r50,
+                "rmag":          g.rmag,
+                "morphology":    g.pmorph,
+                "cz_kms":        g.srvel,
+            })
+            logger.info(
+                f"{target.name} within {kron_scale}x Kron of EVCC {name}: "
+                f"offset={offset_arcsec:.1f}\" ({offset_arcsec / g.rad:.2f} Kron radii)"
+            )
+
+    matches.sort(key=lambda m: m["offset_arcsec"])
+    # persist only for targets that passed the guard (i.e. near Virgo).
+    # far-sky targets already returned [] above and get no TargetExtra at all.
+    save_score_to_targetextra(
+        target, "EVCC Within Galaxy",
+        json.dumps(matches) if matches else "None",
+    )
+
+    return matches
+
+
+
+
+
+
 
 
 def run_mpc(target_id: int) -> None:
