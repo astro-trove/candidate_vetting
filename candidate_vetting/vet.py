@@ -25,7 +25,9 @@ from tom_nonlocalizedevents.models import NonLocalizedEvent
 # )
 from tom_dataproducts.models import ReducedDatum
 
-import json
+from astropy.coordinates import angular_separation
+import astropy.units as u
+from django.db.models import F
 from candidate_vetting.models import EvccQ3C
 from candidate_vetting.public_catalogs.util import cone_search_q3c
 
@@ -413,85 +415,79 @@ EVCC_CENTER_DEC      =   9.262   # deg
 EVCC_BOUNDING_RADIUS =  19.435   # deg, max center-to-galaxy separation
 EVCC_MAX_KRON        = 476.7     # arcsec, largest Kron radius (rad) in catalog
 
+EVCC_DF_COLMAP = {
+    "name":          "ID",
+    "offset_arcsec": "Offset",
+    "offset_kron":   "OffsetKron",
+    "rad":           "Kron",
+    "r50":           "R50",
+    "rmag":          "rMag",
+    "morphology":    "Type",
+    "cz_kms":        "cz",
+}
 
-def _angular_sep_deg(ra1, dec1, ra2, dec2):
-    """Great-circle separation in degrees (haversine)."""
-    ra1, dec1, ra2, dec2 = map(np.radians, (ra1, dec1, ra2, dec2))
-    a = (np.sin((dec2 - dec1) / 2) ** 2
-         + np.cos(dec1) * np.cos(dec2) * np.sin((ra2 - ra1) / 2) ** 2)
-    return float(np.degrees(2 * np.arcsin(np.sqrt(a))))
-
-
-def evcc_galaxy_check(target_id: int, kron_scale: float = 2.0) -> list[dict]:
+def evcc_galaxy_check(target_id: int, kron_scale: float = 2.0) -> str:
     """
-    Geometric association of a target with EVCC galaxies. A target is 'within'
-    a galaxy when its angular offset from the galaxy center is less than
-    kron_scale * the galaxy's Kron radius (rad). Complementary to
-    host_association(): purely geometric, catches transients projected onto
-    (incl. outskirts of) a nearby Virgo galaxy that PCC would drop.
-
-    Returns a list of match dicts (possibly empty), sorted by offset.
-    Returns [] immediately, with NO database query, for targets off the
-    EVCC footprint.
+    Geometric association of a target with EVCC galaxies: 'within' a galaxy
+    when angular offset < kron_scale * the galaxy's Kron radius (rad).
+    Writes matches to the "EVCC Within Galaxy" TargetExtra as JSON records and
+    returns that JSON string ("[]" when no matches). Returns immediately, with
+    NO database query, for targets off the EVCC footprint.
     """
     target = Target.objects.get(id=target_id)
     ra, dec = target.ra, target.dec
 
-    # footprint guard: guard radius scales with kron_scale so coverage (we do not want all alerts to be vetted, only that are near to the patch of EVCC)
-    # can never silently break if the threshold is changed.
+    # cheap footprint guard: no DB query for the ~97% of sky off Virgo.
     guard_radius = EVCC_BOUNDING_RADIUS + kron_scale * EVCC_MAX_KRON / 3600.0
-    if _angular_sep_deg(ra, dec, EVCC_CENTER_RA, EVCC_CENTER_DEC) > guard_radius:
-        return []
+    sep_deg = angular_separation(
+        ra * u.deg, dec * u.deg,
+        EVCC_CENTER_RA * u.deg, EVCC_CENTER_DEC * u.deg,
+    ).to(u.deg).value
+    if sep_deg > guard_radius:
+        return "[]"
 
-    # cone wide enough to reach the biggest galaxy's kron_scale*rad edge
+    # cone, then push containment into the DB. ang_dist is DEGREES, rad arcsec,
+    # so compare in degrees: ang_dist < kron_scale * rad / 3600.
     cone_radius = kron_scale * EVCC_MAX_KRON  # arcsec
     qs = cone_search_q3c(
         EvccQ3C.objects.exclude(rad=None),
         ra, dec, radius=cone_radius, ra_colname="ra", dec_colname="dec",
+    ).filter(ang_dist__lt=kron_scale * F("rad") / 3600.0)
+
+    df = pd.DataFrame(
+        qs.values("evcc", "vcc", "ngc", "ang_dist", "rad", "r50", "rmag",
+                  "pmorph", "srvel")
     )
 
-    matches = []
-    for g in qs:
-        offset_arcsec = g.ang_dist * 3600.0
-        if offset_arcsec < kron_scale * g.rad:      # containment test
-            #name = g.vcc or g.ngc or f"EVCC{g.evcc}"
-            if g.ngc:
-                name = f"NGC {g.ngc}"
-            elif g.vcc:
-                name = f"VCC {g.vcc}"
-            else:
-                name = f"EVCC {g.evcc}"
+    if df.empty:
+        TargetExtra.objects.filter(target_id=target.id, key="EVCC Within Galaxy").delete()
+        TargetExtra.objects.create(
+            target=target, key="EVCC Within Galaxy", value="None"
+        )
+        return "[]"
 
-            matches.append({
-                "name":          name,
-                "offset_arcsec": round(offset_arcsec, 2),
-                "offset_kron":   round(offset_arcsec / g.rad, 2),
-                "rad":           g.rad,
-                "r50":           g.r50,
-                "rmag":          g.rmag,
-                "morphology":    g.pmorph,
-                "cz_kms":        g.srvel,
-            })
-            logger.info(
-                f"{target.name} within {kron_scale}x Kron of EVCC {name}: "
-                f"offset={offset_arcsec:.1f}\" ({offset_arcsec / g.rad:.2f} Kron radii)"
-            )
-
-    matches.sort(key=lambda m: m["offset_arcsec"])
-    # persist only for targets that passed the guard (i.e. near Virgo).
-    # far-sky targets already returned [] above and get no TargetExtra at all.
-    save_score_to_targetextra(
-        target, "EVCC Within Galaxy",
-        json.dumps(matches) if matches else "None",
+    df["offset_arcsec"] = (df["ang_dist"] * 3600.0).round(2)
+    df["offset_kron"]   = (df["ang_dist"] * 3600.0 / df["rad"]).round(2)
+    df["name"] = df.apply(
+        lambda r: f"NGC {r['ngc']}" if r["ngc"]
+        else f"VCC {r['vcc']}" if r["vcc"]
+        else f"EVCC {r['evcc']}",
+        axis=1,
     )
+    df = df.rename(columns={"pmorph": "morphology", "srvel": "cz_kms"})
+    df = df.sort_values("offset_arcsec")
 
-    return matches
+    for _, r in df.iterrows():
+        logger.info(
+            f"{target.name} within {kron_scale}x Kron of {r['name']}: "
+            f"offset={r['offset_arcsec']:.1f}\" ({r['offset_kron']:.2f} Kron radii)"
+        )
 
-
-
-
-
-
+    newdf = df[list(EVCC_DF_COLMAP.keys())].rename(columns=EVCC_DF_COLMAP)
+    result = newdf.to_json(orient="records")   # pandas serializes NaN -> null
+    TargetExtra.objects.filter(target_id=target.id, key="EVCC Within Galaxy").delete()
+    TargetExtra.objects.create(target=target, key="EVCC Within Galaxy", value=result)
+    return result
 
 
 def run_mpc(target_id: int) -> None:
