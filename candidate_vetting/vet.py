@@ -248,6 +248,7 @@ def host_association(
     target_id: int,
     radius: float = HOST_ASSOC_RADIUS,
     pcc_threshold: float = PCC_THRESHOLD,
+    galaxy_catalogs: list = GALAXY_CATALOGS,
     _verbose: bool = False,
 ):
     """
@@ -259,7 +260,7 @@ def host_association(
 
     start = time.time()
     res = []
-    for catalog in GALAXY_CATALOGS:
+    for catalog in galaxy_catalogs:
         cat = catalog()
         catname = str(cat)
         if _verbose:
