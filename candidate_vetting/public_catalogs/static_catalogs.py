@@ -200,7 +200,7 @@ class DesiDr1Galaxy(DesiDr1):
 class DesiDr1Quasar(DesiDr1):
     """
     Data Release 1 of the Dark Energy Spectroscopic Instrument spectroscopic
-    redshifts, with further filtering to select for quasars
+    redshifts, with further filtering to select for **quasars**
     """
 
     name = "DESI DR1"
