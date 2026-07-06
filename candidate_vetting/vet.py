@@ -25,6 +25,12 @@ from tom_nonlocalizedevents.models import NonLocalizedEvent
 # )
 from tom_dataproducts.models import ReducedDatum
 
+from astropy.coordinates import angular_separation
+import astropy.units as u
+from django.db.models import F
+from candidate_vetting.models import EvccQ3C
+from candidate_vetting.public_catalogs.util import cone_search_q3c
+
 from candidate_vetting.public_catalogs.static_catalogs import (
     # DesiSpec,
     Cosmicflows4,
@@ -400,6 +406,88 @@ def agn_association_2d(target_id: int, radius: float = AGN_ASSOC_RADIUS):
     _save_associated_agn_df(ret_df, target)
 
     return ret_df
+
+# --- EVCC (Extended Virgo Cluster Catalog) geometric association -----------
+# Constants derived once from the static evcc_q3c table (1589 rows). They let
+# us reject the ~97% of sky nowhere near Virgo with pure arithmetic, no DB hit.
+EVCC_CENTER_RA       = 187.193   # deg
+EVCC_CENTER_DEC      =   9.262   # deg
+EVCC_BOUNDING_RADIUS =  19.435   # deg, max center-to-galaxy separation
+EVCC_MAX_KRON        = 476.7     # arcsec, largest Kron radius (rad) in catalog
+
+EVCC_DF_COLMAP = {
+    "name":          "ID",
+    "offset_arcsec": "Offset",
+    "offset_kron":   "OffsetKron",
+    "rad":           "Kron",
+    "r50":           "R50",
+    "rmag":          "rMag",
+    "morphology":    "Type",
+    "cz_kms":        "cz",
+}
+
+def evcc_galaxy_check(target_id: int, kron_scale: float = 2.0) -> str:
+    """
+    Geometric association of a target with EVCC galaxies: 'within' a galaxy
+    when angular offset < kron_scale * the galaxy's Kron radius (rad).
+    Writes matches to the "EVCC Within Galaxy" TargetExtra as JSON records and
+    returns that JSON string ("[]" when no matches). Returns immediately, with
+    NO database query, for targets off the EVCC footprint.
+    """
+    target = Target.objects.get(id=target_id)
+    ra, dec = target.ra, target.dec
+
+    # cheap footprint guard: no DB query for the ~97% of sky off Virgo.
+    guard_radius = EVCC_BOUNDING_RADIUS + kron_scale * EVCC_MAX_KRON / 3600.0
+    sep_deg = angular_separation(
+        ra * u.deg, dec * u.deg,
+        EVCC_CENTER_RA * u.deg, EVCC_CENTER_DEC * u.deg,
+    ).to(u.deg).value
+    if sep_deg > guard_radius:
+        return "[]"
+
+    # cone, then push containment into the DB. ang_dist is DEGREES, rad arcsec,
+    # so compare in degrees: ang_dist < kron_scale * rad / 3600.
+    cone_radius = kron_scale * EVCC_MAX_KRON  # arcsec
+    qs = cone_search_q3c(
+        EvccQ3C.objects.exclude(rad=None),
+        ra, dec, radius=cone_radius, ra_colname="ra", dec_colname="dec",
+    ).filter(ang_dist__lt=kron_scale * F("rad") / 3600.0)
+
+    df = pd.DataFrame(
+        qs.values("evcc", "vcc", "ngc", "ang_dist", "rad", "r50", "rmag",
+                  "pmorph", "srvel")
+    )
+
+    if df.empty:
+        TargetExtra.objects.filter(target_id=target.id, key="EVCC Within Galaxy").delete()
+        TargetExtra.objects.create(
+            target=target, key="EVCC Within Galaxy", value="None"
+        )
+        return "[]"
+
+    df["offset_arcsec"] = (df["ang_dist"] * 3600.0).round(2)
+    df["offset_kron"]   = (df["ang_dist"] * 3600.0 / df["rad"]).round(2)
+    df["name"] = df.apply(
+        lambda r: f"NGC {r['ngc']}" if r["ngc"]
+        else f"VCC {r['vcc']}" if r["vcc"]
+        else f"EVCC {r['evcc']}",
+        axis=1,
+    )
+    df = df.rename(columns={"pmorph": "morphology", "srvel": "cz_kms"})
+    df = df.sort_values("offset_arcsec")
+
+    for _, r in df.iterrows():
+        logger.info(
+            f"{target.name} within {kron_scale}x Kron of {r['name']}: "
+            f"offset={r['offset_arcsec']:.1f}\" ({r['offset_kron']:.2f} Kron radii)"
+        )
+
+    newdf = df[list(EVCC_DF_COLMAP.keys())].rename(columns=EVCC_DF_COLMAP)
+    result = newdf.to_json(orient="records")   # pandas serializes NaN -> null
+    TargetExtra.objects.filter(target_id=target.id, key="EVCC Within Galaxy").delete()
+    TargetExtra.objects.create(target=target, key="EVCC Within Galaxy", value=result)
+    return result
 
 
 def run_mpc(target_id: int) -> None:
