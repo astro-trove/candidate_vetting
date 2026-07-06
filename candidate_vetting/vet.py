@@ -43,7 +43,7 @@ from candidate_vetting.public_catalogs.static_catalogs import (
     Milliquas,
     NedLvs,
     # TwoMass,
-    DesiDr1,
+    DesiDr1Galaxy,
     ExtendedVirgoClusterCatalog,
 )
 
@@ -92,7 +92,7 @@ GALAXY_CATALOGS = [
     GladePlus,
     Gwgc,
     Hecate2,
-    DesiDr1,
+    DesiDr1Galaxy,
     NedLvs,
     Cosmicflows4,
     LsDr9North,

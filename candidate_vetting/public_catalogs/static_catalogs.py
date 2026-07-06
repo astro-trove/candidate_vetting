@@ -165,7 +165,6 @@ class DesiDr1(StaticCatalog):
             "target_dec": "dec",
             "default_mag": "default_mag",
         }
-        self.name = "DESI DR1"
 
         # then, of course, init the super class
         super().__init__()
@@ -181,6 +180,48 @@ class DesiDr1(StaticCatalog):
         df["z_type"] = "spec-z"
         df["submitter"] = ""
         return df
+
+
+@citation(doi="10.3847/1538-3881/ae4c43", ads_bibcode="2026AJ....171..285D")
+class DesiDr1Galaxy(DesiDr1):
+    """
+    Data Release 1 of the Dark Energy Spectroscopic Instrument spectroscopic
+    redshifts, with further filtering to select for **galaxies**
+    """
+
+    name = "DESI DR1"
+
+    def query(self, ra, dec, radius=RADIUS_ARCSEC):
+        query_set = super().query(ra, dec, radius)
+        return query_set.filter(spectype="GALAXY")
+
+
+@citation(doi="10.3847/1538-3881/ae4c43", ads_bibcode="2026AJ....171..285D")
+class DesiDr1Quasar(DesiDr1):
+    """
+    Data Release 1 of the Dark Energy Spectroscopic Instrument spectroscopic
+    redshifts, with further filtering to select for quasars
+    """
+
+    name = "DESI DR1"
+
+    def query(self, ra, dec, radius=RADIUS_ARCSEC):
+        query_set = super().query(ra, dec, radius)
+        return query_set.filter(spectype="QSO")
+
+
+@citation(doi="10.3847/1538-3881/ae4c43", ads_bibcode="2026AJ....171..285D")
+class DesiDr1Star(DesiDr1):
+    """
+    Data Release 1 of the Dark Energy Spectroscopic Instrument spectroscopic
+    redshifts, with further filtering to select for **stars**
+    """
+
+    name = "DESI DR1"
+
+    def query(self, ra, dec, radius=RADIUS_ARCSEC):
+        query_set = super().query(ra, dec, radius)
+        return query_set.filter(spectype="STAR")
 
 
 class DesiSpec(StaticCatalog):
