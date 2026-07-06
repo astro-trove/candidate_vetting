@@ -1523,33 +1523,6 @@ class ZtfVarstarQ3C(models.Model):
         db_table = "ztf_varstar_q3c"
 
 
-## catalog of user-provided host galaxies
-class UserGalaxyQ3C(models.Model):
-    id = models.AutoField(primary_key=True)
-    objname = models.TextField(blank=True, null=True)
-    ra = models.FloatField(blank=True, null=True)
-    dec = models.FloatField(blank=True, null=True)
-    z = models.FloatField(blank=True, null=True)
-    z_err = models.FloatField(blank=True, null=True)
-    z_pos_err = models.FloatField(blank=True, null=True)
-    z_neg_err = models.FloatField(blank=True, null=True)
-    z_type = models.TextField(blank=True, null=True)
-    lumdist = models.FloatField(blank=True, null=True)
-    lumdist_err = models.FloatField(blank=True, null=True)
-    lumdist_pos_err = models.FloatField(blank=True, null=True)
-    lumdist_neg_err = models.FloatField(blank=True, null=True)
-    default_mag = models.FloatField(blank=True, null=True)
-    source = models.TextField(blank=True, null=True)
-    submitter = models.TextField(blank=True, null=True)  # submitter and original source
-    og_id = models.BigIntegerField(blank=True, null=True)
-
-    # managed = True (default, specified here for clarity)
-    # --> allow Django to modify this table
-    class Meta:
-        managed = True
-        db_table = "usergalaxy_q3c"
-
-
 class EvccQ3C(models.Model):
     eid = models.AutoField(primary_key=True)
     evcc = models.IntegerField()
