@@ -49,10 +49,9 @@ from candidate_vetting.public_catalogs.static_catalogs import (
     Milliquas,
     NedLvs,
     # TwoMass,
-    DesiDr1,
+    DesiDr1Galaxy,
     ExtendedVirgoClusterCatalog,
 )
-from candidate_vetting.public_catalogs.dynamic_catalogs import UserGalaxy
 
 if minversion(np, "2.0.0"):
     np_trapz_fn = np.trapezoid
@@ -95,12 +94,11 @@ PCC_THRESHOLD = 0.15  # this is the value used in Rastinejad+2022
 #    catalog is preferred over a general redshift catalog
 # 2) Does this catalog have spec-z's or photo-z's? A spec-z catalog is preferred.
 GALAXY_CATALOGS = [
-    UserGalaxy,
     ExtendedVirgoClusterCatalog,
     GladePlus,
     Gwgc,
     Hecate2,
-    DesiDr1,
+    DesiDr1Galaxy,
     NedLvs,
     Cosmicflows4,
     LsDr9North,
@@ -256,6 +254,7 @@ def host_association(
     target_id: int,
     radius: float = HOST_ASSOC_RADIUS,
     pcc_threshold: float = PCC_THRESHOLD,
+    galaxy_catalogs: list = GALAXY_CATALOGS,
     _verbose: bool = False,
 ):
     """
@@ -267,7 +266,7 @@ def host_association(
 
     start = time.time()
     res = []
-    for catalog in GALAXY_CATALOGS:
+    for catalog in galaxy_catalogs:
         cat = catalog()
         catname = str(cat)
         if _verbose:
