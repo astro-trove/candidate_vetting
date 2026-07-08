@@ -533,6 +533,9 @@ class ZTF_Forced_Phot(PhotCatalog):
         self._ztffp_user_address = settings.ZTF_INFO.get("user_address")
         self._ztffp_user_password = settings.ZTF_INFO.get("user_password")
 
+        if not os.path.exists(settings.ZTFTMPDIR):
+            os.makedirs(settings.ZTFTMPDIR)
+
         super().__init__("ZTF Forced Photometry")
 
     def query(
