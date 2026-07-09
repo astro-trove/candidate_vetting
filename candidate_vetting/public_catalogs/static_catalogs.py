@@ -16,6 +16,7 @@ from .util import PS1_POINT_SOURCE_THRESHOLD, RADIUS_ARCSEC, citation
 from ..models import (
     AsassnQ3C,
     Cosmicflows4Q3C,
+    DelveDr3Q3C,
     DesiSpecQ3C,
     DesiDr1Q3C,
     FermiLatQ3C,
@@ -75,6 +76,45 @@ class ExtendedVirgoClusterCatalog(StaticCatalog):
 
     def to_standardized_catalog(self, df):
         return self._standardize_df(df)
+
+
+@citation(
+    doi="10.3847/1538-4365/ac78eb",
+    ads_bibcode="2022ApJS..261...38D",
+    data_url="https://datalab.noirlab.edu/data/delve",
+    version=3,
+)
+class Delve(StaticCatalog):
+    name = "DELVE DR3"
+    catalog_model = DelveDr3Q3C
+    ra_colname = "ra"
+    dec_colname = "dec"
+    mag_colname = "mag_auto_r"
+    colmap = {
+        "coadd_object_id": "trove_uniq",
+        "name": "name",
+        "ra": "ra",
+        "dec": "dec",
+        "mag_auto_r": "default_mag",
+        "dnf_z": "z",
+        "dnf_zsigma": "z_err",
+    }
+
+    def to_standardized_catalog(self, df):
+        df["name"] = df["coadd_object_id"]
+
+        df = self._standardize_df(df)
+
+        df["lumdist"] = cosmo.luminosity_distance(df.z).to(u.Mpc).value
+        df["lumdist_err"] = cosmo.luminosity_distance(df.z_err).to(u.Mpc).value
+        df["z_neg_err"] = df.z_err
+        df["z_pos_err"] = df.z_err
+        df["lumdist_neg_err"] = df.lumdist_err
+        df["lumdist_pos_err"] = df.lumdist_err
+        df["z_type"] = "photo-z"
+        df["submitter"] = ""
+
+        return df
 
 
 @citation(
