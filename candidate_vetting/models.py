@@ -274,7 +274,7 @@ class DelveDr3Q3C(models.Model):
     ywin_image = models.FloatField(blank=True, null=True)
     elon = models.FloatField(blank=True, null=True)
     elat = models.FloatField(blank=True, null=True)
-    coadd_object_id = models.BigIntegerField()
+    coadd_object_id = models.BigIntegerField(primary_key=True)
     dnf_id1 = models.BigIntegerField(blank=True, null=True)
     fof_id = models.BigIntegerField(blank=True, null=True)
     pfw_attempt_id = models.BigIntegerField(blank=True, null=True)
