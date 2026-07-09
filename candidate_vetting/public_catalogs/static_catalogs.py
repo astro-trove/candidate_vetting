@@ -92,7 +92,6 @@ class Delve(StaticCatalog):
     mag_colname = "mag_auto_r"
     colmap = {
         "coadd_object_id": "trove_uniq",
-        "name": "name",
         "ra": "ra",
         "dec": "dec",
         "mag_auto_r": "default_mag",
