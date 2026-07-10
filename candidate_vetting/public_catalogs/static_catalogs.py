@@ -84,7 +84,7 @@ class ExtendedVirgoClusterCatalog(StaticCatalog):
     data_url="https://datalab.noirlab.edu/data/delve",
     version=3,
 )
-class Delve(StaticCatalog):
+class DelveDr3(StaticCatalog):
     name = "DELVE DR3"
     catalog_model = DelveDr3Q3C
     ra_colname = "ra"
