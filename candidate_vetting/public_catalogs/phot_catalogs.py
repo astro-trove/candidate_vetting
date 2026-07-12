@@ -4,6 +4,7 @@ Code to query dynamically updating photometry catalogs
 
 # packages built into python
 import sys
+import lxml
 import os
 import glob
 import requests
@@ -581,14 +582,21 @@ class ZTF_Forced_Phot(PhotCatalog):
         # search for emails matching those logfiles, download the data, and save it
         targets_finished = []
         for logfile in logfiles:
-            result = self._query_ztf_email(logfile)
+            logger.info(f"\nLogfile: {logfile}")
+            try:
+                result = self._query_ztf_email(logfile)
+            except lxml.etree.XMLSyntaxError as exc:
+                logger.exception(exc)
+                logger.info("Moving on to next logfile...")
+                os.remove(logfile)  # rm the log file associated with the original request so we don't keep checking for it
+                continue
             if result is None:
                 continue
 
             # unpack the files
             fplc, fplog = result
 
-            ra, dec = self._read_fp_log(fplog)
+            ra, dec = self._get_ra_dec_from_fp_lc(fplc)
             logger.info(f"Finding TROVE Target at ra={ra} dec={dec} to add this photometry to")
 
             # this coordinate should be within 0.1" of the actual target coordinates
@@ -894,12 +902,12 @@ class ZTF_Forced_Phot(PhotCatalog):
 
         return job_info
 
-    def _read_fp_log(self, filename):
+    def _get_ra_dec_from_fp_lc(self, filename):
 
         with open(filename, "r") as f:
-            loglines = f.readlines()
+            lclines = f.readlines()
 
-        ra = float(loglines[6].replace("fph_ra = ", "").replace("degrees", "").strip())
-        dec = float(loglines[7].replace("fph_dec = ", "").replace("degrees", "").strip())
+        ra = float(lclines[3].replace("# Requested input R.A. =", "").replace("degrees", "").strip())
+        dec = float(lclines[4].replace("# Requested input Dec. =", "").replace("degrees", "").strip())
 
         return ra, dec
