@@ -591,6 +591,7 @@ class ZTF_Forced_Phot(PhotCatalog):
                 os.remove(logfile)  # rm the log file associated with the original request so we don't keep checking for it
                 continue
             if result is None:
+                os.remove(logfile)
                 continue
 
             # unpack the files
