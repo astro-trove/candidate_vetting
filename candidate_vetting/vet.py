@@ -165,7 +165,8 @@ def _save_host_galaxy_df(df, target):
             "default_mag",
             "catalog",
             "submitter",
-        ]
+        ],
+        axis=1
     )
     newdf["z_err"] = [
         [neg, pos]
