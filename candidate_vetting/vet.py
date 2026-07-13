@@ -151,7 +151,7 @@ def _save_host_galaxy_df(df, target):
     if TargetExtra.objects.filter(target_id=target.id, key="Host Galaxies").exists():
         TargetExtra.objects.filter(target_id=target.id, key="Host Galaxies").delete()
 
-    newdf = df[
+    newdf = df.reindex(
         [
             "trove_uniq",
             "name",
@@ -166,7 +166,7 @@ def _save_host_galaxy_df(df, target):
             "catalog",
             "submitter",
         ]
-    ].copy()
+    )
     newdf["z_err"] = [
         [neg, pos]
         if neg != pos  # errors are asymmetric
