@@ -438,13 +438,6 @@ class ATLAS_Forced_Phot(PhotCatalog):
         return cepochs + oepochs
 
     def _stack_photometry(self, magnitudes, binningDays=1.0):
-        # IF WE WANT TO 'STACK' THE PHOTOMETRY
-        summedMagnitudes = {
-            "c": {"mjds": [], "mags": [], "magErrs": [], "n": [], "lim5sig": []},
-            "o": {"mjds": [], "mags": [], "magErrs": [], "n": [], "lim5sig": []},
-            "I": {"mjds": [], "mags": [], "magErrs": [], "n": [], "lim5sig": []},
-        }
-
         # MAGNITUDES/FLUXES ARE DIVIDED IN UNIQUE FILTER SETS - SO ITERATE OVER FILTERS
         allData = []
         for fil, data in list(magnitudes.items()):
@@ -491,12 +484,6 @@ class ATLAS_Forced_Phot(PhotCatalog):
 
                 # GIVE ME NUMBER OF DATA POINTS COMBINED
                 n = len(v["mjds"])
-
-                summedMagnitudes[fil]["mjds"].append(meanMjd)
-                summedMagnitudes[fil]["mags"].append(meanFLux)
-                summedMagnitudes[fil]["magErrs"].append(combError)
-                summedMagnitudes[fil]["lim5sig"].append(comb5SigLimit)
-                summedMagnitudes[fil]["n"].append(n)
 
                 allData.append(
                     {
