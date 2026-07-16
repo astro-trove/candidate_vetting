@@ -12,7 +12,12 @@ from django.db.models.functions import Cast
 from django.conf import settings
 
 from .catalog import StaticCatalog
-from .util import PS1_POINT_SOURCE_THRESHOLD, RADIUS_ARCSEC, citation
+from .util import (
+    PS1_TB18_POINT_SOURCE_THRESHOLD,
+    PS1_B21_DECISION_BOUNDARY,
+    RADIUS_ARCSEC,
+    citation
+)
 from ..models import (
     AsassnQ3C,
     Cosmicflows4Q3C,
@@ -715,7 +720,10 @@ class NedLvs(StaticCatalog):
         return df
 
 
-@citation(doi="10.1093/mnras/staa2587", ads_bibcode="2021MNRAS.500.1633B")
+@citation(
+    doi=["10.1088/1538-3873/aae3d9", "10.1093/mnras/staa2587"],
+    ads_bibcode=["2018PASP..130l8001T", "2021MNRAS.500.1633B"],
+)
 class Ps1(StaticCatalog):
     """
     Pan-STARRS 1 Source Types and Redshifts with Machine Learning (PS1-STRM)
@@ -748,34 +756,69 @@ class Ps1(StaticCatalog):
         return df
 
 
-@citation(doi="10.1093/mnras/staa2587", ads_bibcode="2021MNRAS.500.1633B")
+@citation(
+    doi=["10.1088/1538-3873/aae3d9", "10.1093/mnras/staa2587"],
+    ads_bibcode=["2018PASP..130l8001T", "2021MNRAS.500.1633B"],
+)
 class Ps1Galaxy(Ps1):
     """
     Pan-STARRS 1 Source Types and Redshifts with Machine Learning (PS1-STRM)
     catalogue, which classifies sources as point sources, quasars, or galaxies,
-    selecting for objects with point source score < 0.83
+    selecting for objects with Tachibana & Miller 18 point source
+    score < 0.83, Beck+21 prob_galaxy > 0.7, and Beck+21 prob_star < 0.7
     """
 
     name = "PS1 STRM"
 
     def query(self, ra, dec, radius=RADIUS_ARCSEC):
         query_set = super().query(ra, dec, radius)
-        return query_set.filter(ps_score__lte=PS1_POINT_SOURCE_THRESHOLD, rmeanpsfmag__gt=0)
+        return query_set.filter(
+            ps_score__lt=PS1_TB18_POINT_SOURCE_THRESHOLD,
+            prob_galaxy__gt=PS1_B21_DECISION_BOUNDARY,
+            prob_star__lt=PS1_B21_DECISION_BOUNDARY,
+            rmeanpsfmag__gt=0
+        )
 
 
-@citation(doi="10.1093/mnras/staa2587", ads_bibcode="2021MNRAS.500.1633B")
+@citation(
+    doi=["10.1088/1538-3873/aae3d9", "10.1093/mnras/staa2587"],
+    ads_bibcode=["2018PASP..130l8001T", "2021MNRAS.500.1633B"],
+)
 class Ps1PointSource(Ps1):
     """
     Pan-STARRS 1 Source Types and Redshifts with Machine Learning (PS1-STRM)
     catalogue, which classifies sources as point sources, quasars, or galaxies,
-    selecting for objects with galaxy score < 0.7
+    selecting for objects with Beck+21 prob_galaxy < 0.7
     """
 
     name = "PS1 STRM"
 
     def query(self, ra, dec, radius=RADIUS_ARCSEC):
         query_set = super().query(ra, dec, radius)
-        return query_set.filter(ps_score__gt=PS1_POINT_SOURCE_THRESHOLD, prob_galaxy__lt=0.7)
+        return query_set.filter(
+            ps_score__gt=PS1_TB18_POINT_SOURCE_THRESHOLD,
+            prob_galaxy__lt=PS1_TB18_POINT_SOURCE_THRESHOLD
+        )
+
+
+@citation(
+    doi=["10.1088/1538-3873/aae3d9", "10.1093/mnras/staa2587"],
+    ads_bibcode=["2018PASP..130l8001T", "2021MNRAS.500.1633B"],
+)
+class Ps1Qso(Ps1):
+    """
+    Pan-STARRS 1 Source Types and Redshifts with Machine Learning (PS1-STRM)
+    catalogue, which classifies sources as point sources, quasars, or galaxies,
+    selecting for objects with Beck+21 prob_qso > 0.7
+    """
+
+    name = "PS1 STRM"
+
+    def query(self, ra, dec, radius=RADIUS_ARCSEC):
+        query_set = super().query(ra, dec, radius)
+        return query_set.filter(
+            prob_qso__gt=PS1_B21_DECISION_BOUNDARY
+        )
 
 
 @citation()
