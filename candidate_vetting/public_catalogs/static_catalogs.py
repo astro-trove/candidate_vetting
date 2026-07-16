@@ -104,6 +104,16 @@ class DelveDr3(StaticCatalog):
         "dnf_zsigma": "z_err",
     }
 
+    def __init__(self):
+        # filter based on extendedness parameter from SourceExtractor + g-band magnitude
+        # see Drlica-Wagner et al. 2022
+        # 0 = confident star, 1 = likely star, 2 = likely galaxy, 3 = confident galaxy
+        self.catalog_model.objects = self.catalog_model.objects.filter(
+            ext_coadd__gte=2,
+            mag_auto_g__range=(19,22),
+        )
+        super().__init__()
+
     def to_standardized_catalog(self, df):
         df["name"] = df["coadd_object_id"]
 
