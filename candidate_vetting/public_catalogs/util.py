@@ -20,6 +20,14 @@ from tom_dataproducts.models import ReducedDatum
 
 RADIUS_ARCSEC = 2.0
 
+
+## threshold for PS1 point sources
+# 0.83, as used is Rastinejad+22 and based on Tachibana & Miller 2018
+# morphological classification
+# yields true positive rate of ~0.995, false positive rate of ~0.005
+PS1_POINT_SOURCE_THRESHOLD = 0.83
+
+
 _QUERY_METHOD_DOCSTRING = f"""
 Parameters
 ----------
@@ -57,11 +65,6 @@ def create_phot(target, time, fluxdict, source):
         target=target,
     )
     return created
-
-
-# use 0.83 as the default threshold
-# this is from
-PS1_POINT_SOURCE_THRESHOLD = 0.83
 
 
 class ConeSearch(Func):
