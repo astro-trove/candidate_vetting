@@ -52,7 +52,7 @@ from candidate_vetting.public_catalogs.static_catalogs import (
     # TwoMass,
     DesiDr1Galaxy,
     ExtendedVirgoClusterCatalog,
-    DelveDr3,
+    DelveDr3Galaxy,
 )
 
 if minversion(np, "2.0.0"):
@@ -103,7 +103,7 @@ GALAXY_CATALOGS = [
     DesiDr1Galaxy,
     NedLvs,
     Cosmicflows4,
-    DelveDr3,
+    DelveDr3Galaxy,
     LsDr9North,
     LsDr10South,
     Ps1Galaxy,

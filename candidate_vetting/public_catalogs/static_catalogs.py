@@ -67,72 +67,6 @@ class AsassnVariableStar(StaticCatalog):
 
 
 @citation(
-    doi="10.1088/0067-0049/215/2/22",
-    ads_bibcode="2014ApJS..215...22K",
-    data_url="https://doi.org/10.26093/cds/vizier.22150022",
-)
-class ExtendedVirgoClusterCatalog(StaticCatalog):
-    name = "EVCC"
-    catalog_model = EvccQ3C
-    ra_colname = "ra"
-    dec_colname = "dec"
-    mag_colname = "rmag"
-    colmap = {"eid": "trove_uniq", "evcc": "name", "ra": "ra", "dec": "dec", "rmag": "default_mag"}
-
-    def to_standardized_catalog(self, df):
-        return self._standardize_df(df)
-
-
-@citation(
-    doi="10.3847/1538-4365/ac78eb",
-    ads_bibcode="2022ApJS..261...38D",
-    data_url="https://datalab.noirlab.edu/data/delve",
-    version=3,
-)
-class DelveDr3(StaticCatalog):
-    name = "DELVE DR3"
-    catalog_model = DelveDr3Q3C
-    ra_colname = "ra"
-    dec_colname = "dec"
-    mag_colname = "mag_auto_r"
-    colmap = {
-        "coadd_object_id": "trove_uniq",
-        "ra": "ra",
-        "dec": "dec",
-        "mag_auto_r": "default_mag",
-        "dnf_z": "z",
-        "dnf_zsigma": "z_err",
-    }
-
-    def __init__(self):
-        # filter based on extendedness parameter from SourceExtractor & g-band magnitude
-        # see Drlica-Wagner et al. 2022
-        # g-band magnitude between 19 and 22
-        # extended_coadd: 0 = confident star, 1 = likely star, 2 = likely galaxy, 3 = confident galaxy
-        self.catalog_model.objects = self.catalog_model.objects.filter(
-            ext_coadd__gte=2,
-            mag_auto_g__range=(19,22),
-        )
-        super().__init__()
-
-    def to_standardized_catalog(self, df):
-        df["name"] = df["coadd_object_id"]
-
-        df = self._standardize_df(df)
-
-        df["lumdist"] = cosmo.luminosity_distance(df.z).to(u.Mpc).value
-        df["lumdist_err"] = cosmo.luminosity_distance(df.z_err).to(u.Mpc).value
-        df["z_neg_err"] = df.z_err
-        df["z_pos_err"] = df.z_err
-        df["lumdist_neg_err"] = df.lumdist_err
-        df["lumdist_pos_err"] = df.lumdist_err
-        df["z_type"] = "photo-z"
-        df["submitter"] = ""
-
-        return df
-
-
-@citation(
     doi=[
         "10.1088/0004-6256/138/2/323",
         "10.1038/s41550-024-02370-0",
@@ -188,6 +122,94 @@ class Cosmicflows4(StaticCatalog):
         df = self._standardize_df(df)
 
         return df
+
+
+@citation(
+    doi="10.3847/1538-4365/ac78eb",
+    ads_bibcode="2022ApJS..261...38D",
+    data_url="https://datalab.noirlab.edu/data/delve",
+    version=3,
+)
+class DelveDr3(StaticCatalog):
+    """DECam Local Volume Exploration (DELVE) Data Release 3 catalog"""
+
+    name = "DELVE DR3"
+    catalog_model = DelveDr3Q3C
+    ra_colname = "ra"
+    dec_colname = "dec"
+    mag_colname = "mag_auto_r"
+    colmap = {
+        "coadd_object_id": "trove_uniq",
+        "ra": "ra",
+        "dec": "dec",
+        "mag_auto_r": "default_mag",
+        "dnf_z": "z",
+        "dnf_zsigma": "z_err",
+    }
+
+    def __init__(self):
+        # select for g-band magnitudes between 22 and 19
+        # see Drlica-Wagner et al. 2022
+        self.catalog_model.objects = self.catalog_model.objects.filter(
+            mag_auto_g__range=(19,22),
+        )
+        super().__init__()
+
+    def to_standardized_catalog(self, df):
+        df["name"] = df["coadd_object_id"]
+
+        df = self._standardize_df(df)
+
+        df["lumdist"] = cosmo.luminosity_distance(df.z).to(u.Mpc).value
+        df["lumdist_err"] = cosmo.luminosity_distance(df.z_err).to(u.Mpc).value
+        df["z_neg_err"] = df.z_err
+        df["z_pos_err"] = df.z_err
+        df["lumdist_neg_err"] = df.lumdist_err
+        df["lumdist_pos_err"] = df.lumdist_err
+        df["z_type"] = "photo-z"
+        df["submitter"] = ""
+
+        return df
+
+
+@citation(
+    doi="10.3847/1538-4365/ac78eb",
+    ads_bibcode="2022ApJS..261...38D",
+    data_url="https://datalab.noirlab.edu/data/delve",
+    version=3,
+)
+class DelveDr3Galaxy(DelveDr3):
+    """DECam Local Volume Exploration (DELVE) Data Release 3 catalog, with
+    futher filtering to select for **galaxies**"""
+
+    name = "DELVE DR3"
+
+    # filter based on extendedness parameter from SourceExtractor
+    # see Drlica-Wagner et al. 2022
+    # extended_coadd: 0 = confident star, 1 = likely star, 2 = likely galaxy, 3 = confident galaxy
+    def query(self, ra, dec, radius=RADIUS_ARCSEC):
+        query_set = super().query(ra, dec, radius)
+        return query_set.filter(ext_coadd__gte=2)
+
+
+@citation(
+    doi="10.3847/1538-4365/ac78eb",
+    ads_bibcode="2022ApJS..261...38D",
+    data_url="https://datalab.noirlab.edu/data/delve",
+    version=3,
+)
+class DelveDr3Star(DelveDr3):
+    """DECam Local Volume Exploration (DELVE) Data Release 3 catalog, with
+    futher filtering to select for **stars**"""
+
+    name = "DELVE DR3"
+
+    # filter based on extendedness parameter from SourceExtractor
+    # see Drlica-Wagner et al. 2022
+    # extended_coadd: 0 = confident star, 1 = likely star, 2 = likely galaxy, 3 = confident galaxy
+    def query(self, ra, dec, radius=RADIUS_ARCSEC):
+        query_set = super().query(ra, dec, radius)
+        return query_set.filter(ext_coadd__lte=1)
 
 
 @citation(doi="10.3847/1538-3881/ae4c43", ads_bibcode="2026AJ....171..285D")
@@ -316,6 +338,23 @@ class DesiSpec(StaticCatalog):
         df["z_type"] = "spec-z"
         df["submitter"] = ""
         return df
+
+
+@citation(
+    doi="10.1088/0067-0049/215/2/22",
+    ads_bibcode="2014ApJS..215...22K",
+    data_url="https://doi.org/10.26093/cds/vizier.22150022",
+)
+class ExtendedVirgoClusterCatalog(StaticCatalog):
+    name = "EVCC"
+    catalog_model = EvccQ3C
+    ra_colname = "ra"
+    dec_colname = "dec"
+    mag_colname = "rmag"
+    colmap = {"eid": "trove_uniq", "evcc": "name", "ra": "ra", "dec": "dec", "rmag": "default_mag"}
+
+    def to_standardized_catalog(self, df):
+        return self._standardize_df(df)
 
 
 @citation()
