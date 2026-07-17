@@ -886,6 +886,68 @@ class Sdss12Photoz(StaticCatalog):
         return df
 
 
+@citation(
+    doi="10.1088/0067-0049/219/1/12",
+    ads_bibcode="2015ApJS..219...12A",
+    version="DR11 & DR12",
+)
+class Sdss12PhotozGalaxy(Sdss12Photoz):
+    """
+    Photometric redshifts catalog built using imaging and spectra from Data
+    Releases 11 and 12 of SDSS, filtering to select for **galaxies**
+    """
+
+    name = "SDSS DR12"
+
+    def query(self, ra, dec, radius=RADIUS_ARCSEC):
+        query_set = super().query(ra, dec, radius)
+        return query_set.filter(
+            classifier=3, # galaxy
+            spclass="GALAXY"
+        )
+
+
+@citation(
+    doi="10.1088/0067-0049/219/1/12",
+    ads_bibcode="2015ApJS..219...12A",
+    version="DR11 & DR12",
+)
+class Sdss12PhotozQuasar(Sdss12Photoz):
+    """
+    Photometric redshifts catalog built using imaging and spectra from Data
+    Releases 11 and 12 of SDSS, filtering to select for **quasars**
+    """
+
+    name = "SDSS DR12"
+
+    def query(self, ra, dec, radius=RADIUS_ARCSEC):
+        query_set = super().query(ra, dec, radius)
+        return query_set.filter(
+            spclass="QSO"
+        )
+
+
+@citation(
+    doi="10.1088/0067-0049/219/1/12",
+    ads_bibcode="2015ApJS..219...12A",
+    version="DR11 & DR12",
+)
+class Sdss12PhotozStar(Sdss12Photoz):
+    """
+    Photometric redshifts catalog built using imaging and spectra from Data
+    Releases 11 and 12 of SDSS, filtering to select for **stars**
+    """
+
+    name = "SDSS DR12"
+
+    def query(self, ra, dec, radius=RADIUS_ARCSEC):
+        query_set = super().query(ra, dec, radius)
+        return query_set.filter(
+            classifier=6, # star
+            spclass="STAR"
+        )
+
+
 @citation()
 class TwoMass(StaticCatalog):
     """

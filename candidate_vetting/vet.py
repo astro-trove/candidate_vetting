@@ -42,7 +42,7 @@ from candidate_vetting.public_catalogs.static_catalogs import (
     LsDr9North,
     LsDr10South,
     Ps1Galaxy,
-    Sdss12Photoz,
+    Sdss12PhotozGalaxy,
     AsassnVariableStar,
     Gaiadr3Variable,
     ZtfVarStar,
@@ -107,7 +107,7 @@ GALAXY_CATALOGS = [
     LsDr9North,
     LsDr10South,
     Ps1Galaxy,
-    Sdss12Photoz,
+    Sdss12PhotozGalaxy,
 ]
 
 
