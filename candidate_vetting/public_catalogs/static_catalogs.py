@@ -905,13 +905,6 @@ class Sdss12Photoz(StaticCatalog):
         "rmag": "default_mag",
     }
 
-    def __init__(self):
-        self.catalog_model.objects = self.catalog_model.objects.filter(
-            classifier=3, # 3 = galaxy
-            spclass="GALAXY",
-        )
-        super().__init__()
-
     def to_standardized_catalog(self, df):
         df = self._standardize_df(df)
         df["z_neg_err"] = df.z_err
