@@ -542,7 +542,11 @@ class LsDr9North(StaticCatalog):
 
     def __init__(self):
         # flux_r is in nanomaggy
-        self.catalog_model.objects = self.catalog_model.objects.filter(flux_r__gt=0).annotate(
+        self.catalog_model.objects = self.catalog_model.objects.filter(
+            flux_r__gt=0
+        ).exclude(
+            type="PSF",
+        ).annotate(
             default_mag=22.5 - 2.5 * _Log10("flux_r")
         )
 
@@ -604,7 +608,11 @@ class LsDr10South(StaticCatalog):
 
     def __init__(self):
         # flux_r is in nanomaggy
-        self.catalog_model.objects = self.catalog_model.objects.filter(flux_r__gt=0).annotate(
+        self.catalog_model.objects = self.catalog_model.objects.filter(
+            flux_r__gt=0
+        ).exclude(
+            mtype="PSF",
+        ).annotate(
             default_mag=22.5 - 2.5 * _Log10("flux_r")
         )
 
