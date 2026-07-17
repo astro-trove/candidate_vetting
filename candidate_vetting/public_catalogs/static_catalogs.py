@@ -105,9 +105,10 @@ class DelveDr3(StaticCatalog):
     }
 
     def __init__(self):
-        # filter based on extendedness parameter from SourceExtractor + g-band magnitude
+        # filter based on extendedness parameter from SourceExtractor & g-band magnitude
         # see Drlica-Wagner et al. 2022
-        # 0 = confident star, 1 = likely star, 2 = likely galaxy, 3 = confident galaxy
+        # g-band magnitude between 19 and 22
+        # extended_coadd: 0 = confident star, 1 = likely star, 2 = likely galaxy, 3 = confident galaxy
         self.catalog_model.objects = self.catalog_model.objects.filter(
             ext_coadd__gte=2,
             mag_auto_g__range=(19,22),
