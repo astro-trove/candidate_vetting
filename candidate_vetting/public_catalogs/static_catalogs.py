@@ -75,7 +75,11 @@ class ExtendedVirgoClusterCatalog(StaticCatalog):
     colmap = {"eid": "trove_uniq", "evcc": "name", "ra": "ra", "dec": "dec", "rmag": "default_mag"}
 
     def to_standardized_catalog(self, df):
-        return self._standardize_df(df)
+        df = self._standardize_df(df)
+        df["lumdist"] = 18.
+        df["lumdist_neg_err"] = 2.
+        df["lumdist_pos_err"] = 4.
+        return df
 
 
 @citation(
