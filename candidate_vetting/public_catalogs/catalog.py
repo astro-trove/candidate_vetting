@@ -9,6 +9,9 @@ from django.db import models
 
 from .util import RADIUS_ARCSEC, cone_search_q3c, pcc_q3c
 
+from django.db.models import F, CharField, Case, When, Value, Q, ExpressionWrapper
+from django.db.models.functions import Coalesce, Cast
+
 # database connection constants
 DB_HOST = os.getenv("POSTGRES_HOST", "localhost")
 DB_NAME = os.getenv("POSTGRES_DB", "sassy")
@@ -55,6 +58,7 @@ class StaticCatalog(Catalog):
     catalog_model = None
     # This is used for the proper name in the Galaxy Table display
     name = None
+    hierarchical_name_columns = []
     colmap = {}
 
     def __init__(self, verbose: bool = False):
@@ -119,7 +123,7 @@ class StaticCatalog(Catalog):
 
     def query(self, ra, dec, radius=RADIUS_ARCSEC):
         """Do a cone search query on this catalog"""
-        return cone_search_q3c(
+        qset = cone_search_q3c(
             self.catalog_model.objects.all(),
             ra,
             dec,
@@ -128,10 +132,16 @@ class StaticCatalog(Catalog):
             dec_colname=self.dec_colname,
         )
 
+        # then we need to derive a new name column if we need to merge multiple columns
+        if len(self.hierarchical_name_columns):
+            qset = self._annotate_with_coalesce(qset)
+
+        return qset
+        
     def pcc_filter(self, ra, dec, radius=RADIUS_ARCSEC, pcc_max=0.5):
         # first do the cone search
         cone_search_qset = self.query(ra, dec, radius=radius)
-
+            
         # then only annotate the result of the cone search
         return pcc_q3c(
             cone_search_qset,
@@ -146,8 +156,39 @@ class StaticCatalog(Catalog):
     def _standardize_df(self, df):
         if not getattr(self, "colmap"):
             raise TypeError("Missing the colmap, can't standardize dataset!")
+
         df = df.rename(columns=self.colmap)
         return df[list(self.colnames & set(df.columns))]
+
+    def _annotate_with_coalesce(self, queryset, output_field_name='name'):
+        """
+        Annotate a queryset with hierarchical null-filling across multiple columns.
+        First cast all columns to CharField, then use Coalesce on the cast versions.
+        """
+
+        null_values = ["null", "-1"]
+
+        # First, annotate with cast versions of each column
+        queryset = queryset.annotate(**{
+            f'_{col}_char' : Cast(F(col), CharField())
+            for col in self.hierarchical_name_columns
+        })
+
+        # then build some When/Case expressions 
+        case_expressions = [
+            Case(
+                When(**{f'_{col}_char__in': null_values}, then=Value(None)),
+                default=F(f'_{col}_char'),
+                output_field=CharField()
+            ) for col in self.hierarchical_name_columns 
+        ]
+
+        # the coalesce these to produce the "best" name
+        coalesce_expr = Coalesce(*case_expressions, output_field=CharField())
+
+        return queryset.annotate(**{
+            output_field_name: coalesce_expr
+        })
     
     def __repr__(self):
         return self.name

@@ -8,7 +8,7 @@ import pandas as pd
 import numpy as np
 
 from django.db.models import F, Q, Func, Value, IntegerField, Case, When, CharField
-from django.db.models.functions import Cast
+from django.db.models.functions import Cast, Concat
 from django.conf import settings
 
 from .catalog import StaticCatalog
@@ -72,12 +72,20 @@ class ExtendedVirgoClusterCatalog(StaticCatalog):
     ra_colname = "ra"
     dec_colname = "dec"
     mag_colname = "rmag"
-    colmap = {"eid": "trove_uniq", "evcc": "name", "ra": "ra", "dec": "dec", "rmag": "default_mag"}
-
+    colmap = {"eid": "trove_uniq", "name": "name", "ra": "ra", "dec": "dec", "rmag": "default_mag"}
+    hierarchical_name_columns = ["_ngc", "vcc", "evcc"]
+    
     def to_standardized_catalog(self, df):
         df["filter"] = "r"
         return self._standardize_df(df)
 
+    def _annotate_with_coalesce(self, queryset):
+
+        # we first need to annotate the queryset with a cleaned up NGC column
+        queryset = queryset.annotate(_ngc=Concat(Value("NGC"), 'ngc'))
+
+        # then we can do the normal coalesce
+        return super(ExtendedVirgoClusterCatalog, self)._annotate_with_coalesce(queryset)
 
 @citation(
     doi="10.3847/1538-4365/ac78eb",
@@ -101,7 +109,9 @@ class DelveDr3(StaticCatalog):
     }
 
     def to_standardized_catalog(self, df):
-        df["name"] = df["coadd_object_id"]
+        # TODO: This seems to be the only column that could be a "name" in DELVE,
+        # maybe someone else can find something better though?
+        df["name"] = df["coadd_object_id"] 
         df["filter"] = "r"
         
         df = self._standardize_df(df)
@@ -328,10 +338,11 @@ class GladePlus(StaticCatalog):
     name = "GLADE+"
     catalog_model = GladePlusQ3C
     mag_colname = "b"
-
+    hierarchical_name_columns = ["gwgc", "hyperleda", "sdss", "wise", "twomass", "pgc", "gn"]
+    
     colmap = {
         "gid": "trove_uniq",
-        "gn": "name",
+        "name": "name",
         "z_helio": "z",
         "z_err": "z_err",
         "d_l": "lumdist",  # Mpc
@@ -502,7 +513,7 @@ class LsDr9North(StaticCatalog):
 
         self.colmap = {
             "lid": "trove_uniq",
-            "objid": "name",
+            "lid": "name", # TODO: This col is kinda ugly as a name, but I don't think there is anything better? --Noah
             "ra": "ra",
             "dec": "dec",
             "default_mag": "default_mag",
@@ -565,7 +576,7 @@ class LsDr10South(StaticCatalog):
 
         self.colmap = {
             "lid": "trove_uniq",
-            "objid": "name",
+            "lid": "name", # TODO: This col is kinda ugly for the name, but I don't think there is anything better? --Noah
             "ra": "ra",
             "declination": "dec",
             "default_mag": "default_mag",
@@ -739,7 +750,7 @@ class Ps1(StaticCatalog):
     catalog_model = Ps1Q3C
     colmap = {
         "pid": "trove_uniq",
-        "objname": "name",
+        "name": "name",
         "ra": "ra",
         "dec": "dec",
         "z_phot": "z",
@@ -747,6 +758,7 @@ class Ps1(StaticCatalog):
         "rmeanpsfmag": "default_mag",  # mag col to use for pcc
     }
     mag_colname = "rmeanpsfmag"
+    hierarchical_name_columns = ["objname", "objid"]
 
     def to_standardized_catalog(self, df):
         df["filter"] = "r"
@@ -818,14 +830,15 @@ class Sdss12Photoz(StaticCatalog):
     catalog_model = Sdss12PhotozQ3C
     colmap = {
         "sid": "trove_uniq",
-        "sdssid": "name",
+        "name": "name",
         "ra": "ra",
         "dec": "dec",
         "zph": "z",
         "e_zph": "z_err",
         "rmag": "default_mag",
     }
-
+    hierarchical_name_columns = ["sdss12", "sdssid"]
+    
     def to_standardized_catalog(self, df):
         df["filter"] = "r"
         df = self._standardize_df(df)
