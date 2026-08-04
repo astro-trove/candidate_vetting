@@ -75,6 +75,7 @@ class ExtendedVirgoClusterCatalog(StaticCatalog):
     colmap = {"eid": "trove_uniq", "evcc": "name", "ra": "ra", "dec": "dec", "rmag": "default_mag"}
 
     def to_standardized_catalog(self, df):
+        df["filter"] = "r"
         return self._standardize_df(df)
 
 
@@ -101,7 +102,8 @@ class DelveDr3(StaticCatalog):
 
     def to_standardized_catalog(self, df):
         df["name"] = df["coadd_object_id"]
-
+        df["filter"] = "r"
+        
         df = self._standardize_df(df)
 
         df["lumdist"] = cosmo.luminosity_distance(df.z).to(u.Mpc).value
@@ -162,13 +164,15 @@ class Cosmicflows4(StaticCatalog):
     def to_standardized_catalog(self, df):
         df["lumdist_neg_err"] = df.e_dist
         df["lumdist_pos_err"] = df.e_dist
-
+        
         self.colmap["lumdist_neg_err"] = "lumdist_neg_err"
         self.colmap["lumdist_pos_err"] = "lumdist_pos_err"
 
         df["z_type"] = "z-ind."
         df["submitter"] = ""
 
+        df["filter"] = "r"
+        
         df = self._standardize_df(df)
 
         return df
@@ -218,6 +222,7 @@ class DesiDr1(StaticCatalog):
         df["lumdist_pos_err"] = df.lumdist_err
         df["z_type"] = "spec-z"
         df["submitter"] = ""
+        df["filter"] = "r"
         return df
 
 
@@ -349,6 +354,7 @@ class GladePlus(StaticCatalog):
 
         df["z_type"] = df.apply(_parse_dist_flag_col, axis=1)
 
+        df["filter"] = "b"
         df = self._standardize_df(df)
         df["z_neg_err"] = df.z_err
         df["z_pos_err"] = df.z_err
@@ -377,6 +383,7 @@ class Gwgc(StaticCatalog):
     mag_colname = "b_app"
 
     def to_standardized_catalog(self, df):
+        df["filter"] = "b"
         df = self._standardize_df(df)
         df["lumdist_neg_err"] = df.lumdist_err
         df["lumdist_pos_err"] = df.lumdist_err
@@ -414,7 +421,8 @@ class Hecate1(StaticCatalog):
         df["z_type"] = df.apply(lambda row: "z ind." if row.dmethod == "N" else "spec-z", axis=1)
 
         df["submitter"] = ""
-
+        df["filter"] = "r"
+        
         df = self._standardize_df(df)
 
         return df
@@ -461,6 +469,7 @@ class Hecate2(StaticCatalog):
 
         df["submitter"] = ""
 
+        df["filter"] = "r"
         df = self._standardize_df(df)
 
         return df
@@ -514,6 +523,7 @@ class LsDr9North(StaticCatalog):
         self.colmap["z_neg_err"] = "z_neg_err"
         self.colmap["z_pos_err"] = "z_pos_err"
 
+        df["filter"] = "r"
         df = self._standardize_df(df)
         df["lumdist"] = cosmo.luminosity_distance(df.z).to(u.Mpc).value
         df["lumdist_err"] = cosmo.luminosity_distance(df.z_err).to(u.Mpc).value
@@ -576,6 +586,7 @@ class LsDr10South(StaticCatalog):
         self.colmap["z_neg_err"] = "z_neg_err"
         self.colmap["z_pos_err"] = "z_pos_err"
 
+        df["filter"] = "r"
         df = self._standardize_df(df)
         df["lumdist"] = cosmo.luminosity_distance(df.z).to(u.Mpc).value
         df["lumdist_err"] = cosmo.luminosity_distance(df.z_err).to(u.Mpc).value
@@ -645,6 +656,7 @@ class Milliquas(StaticCatalog):
         super().__init__()
 
     def to_standardized_catalog(self, df):
+        df["filter"] = "r"
         df = self._standardize_df(df)
         df["z_neg_err"] = df.z_err
         df["z_pos_err"] = df.z_err
@@ -694,6 +706,7 @@ class NedLvs(StaticCatalog):
 
         df["z_type"] = df.apply(_get_ztype, axis=1)
 
+        df["filter"] = "J"
         df = self._standardize_df(df)
 
         # some rows don't have uncertainty on redshift
@@ -736,6 +749,7 @@ class Ps1(StaticCatalog):
     mag_colname = "rmeanpsfmag"
 
     def to_standardized_catalog(self, df):
+        df["filter"] = "r"
         df = self._standardize_df(df)
         df["z_neg_err"] = df.z_err
         df["z_pos_err"] = df.z_err
@@ -813,6 +827,7 @@ class Sdss12Photoz(StaticCatalog):
     }
 
     def to_standardized_catalog(self, df):
+        df["filter"] = "r"
         df = self._standardize_df(df)
         df["z_neg_err"] = df.z_err
         df["z_pos_err"] = df.z_err

@@ -92,6 +92,7 @@ class StaticCatalog(Catalog):
             "ang_dist",
             "offset",
             "pcc",
+            "filter"
         }
 
         # copy the colmap in case it is defined as a class-level variable
