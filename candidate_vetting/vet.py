@@ -78,6 +78,7 @@ HOST_DF_COLMAP = {
     "default_mag": "Mags",
     "catalog": "Source",
     "submitter": "Submitter",
+    "filter": "Filter"
 }
 HOST_DF_COLMAP_INVERSE = {v: k for k, v in HOST_DF_COLMAP.items()}
 
@@ -164,6 +165,7 @@ def _save_host_galaxy_df(df, target):
             "z_type",
             "default_mag",
             "catalog",
+            "filter",
             "submitter",
         ],
         axis=1
