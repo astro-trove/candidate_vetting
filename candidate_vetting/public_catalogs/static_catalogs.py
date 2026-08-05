@@ -943,7 +943,8 @@ class Sdss12PhotozGalaxy(Sdss12Photoz):
         query_set = super().query(ra, dec, radius)
         return query_set.filter(
             classifier=3, # galaxy
-            spclass="GALAXY"
+            spclass="GALAXY",
+            f_zsp=0, # zwarning flag
         )
 
 
