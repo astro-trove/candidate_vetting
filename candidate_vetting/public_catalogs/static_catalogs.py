@@ -694,6 +694,7 @@ class Milliquas(StaticCatalog):
 
         # now that we have these annotations, we can define the colmap
         self.colmap = {
+            "mid":"trove_uniq",
             "name": "name",
             "ra": "ra",
             "dec": "dec",
@@ -879,14 +880,41 @@ class Ps1Qso(Ps1):
         )
 
 
-@citation()
+@citation(
+    doi="10.1007/s10509-015-2254-2",
+    ads_bibcode="2015Ap&SS.357...75M",
+    version="5th edition",
+    data_url="https://heasarc.gsfc.nasa.gov/w3browse/all/romabzcat.html",
+)
 class RomaBzcat(StaticCatalog):
     """
-    TODO: Add catalog description
-    TODO: Add citation
+    Roma-BZCAT catalog of over 3000 blazars.
     """
 
+    name = "Roma-BZCAT"
     catalog_model = RomaBzcatQ3C
+    colmap = {
+        "rid":"trove_uniq",
+        "name": "name",
+        "ra": "ra",
+        "dec": "dec",
+        "z": "z",
+        "z_err": "z_err",
+        "rmag": "default_mag",
+        }
+    mag_colname = "rmag"
+
+    def to_standardized_catalog(self, df):
+        df = self._standardize_df(df)
+        df["z_neg_err"] = df.z_err
+        df["z_pos_err"] = df.z_err
+        df["lumdist"] = cosmo.luminosity_distance(df.z).to(u.Mpc).value
+        df["lumdist_err"] = cosmo.luminosity_distance(df.z_err).to(u.Mpc).value
+        df["lumdist_neg_err"] = df.lumdist_err
+        df["lumdist_pos_err"] = df.lumdist_err
+        df["z_type"] = "spec-z"
+        df["submitter"] = ""
+        return df
 
 
 @citation(
