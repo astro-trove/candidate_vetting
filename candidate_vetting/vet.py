@@ -48,6 +48,7 @@ from candidate_vetting.public_catalogs.static_catalogs import (
     ZtfVarStar,
     Ps1PointSource,
     Milliquas,
+    RomaBzcat,
     NedLvs,
     # TwoMass,
     DesiDr1Galaxy,
@@ -356,7 +357,11 @@ def point_source_association(target_id: int, radius: float = 2):
     return matches
 
 
-def agn_association_2d(target_id: int, radius: float = AGN_ASSOC_RADIUS):
+def agn_association_2d(
+        target_id: int,
+        radius: float = AGN_ASSOC_RADIUS,
+        _verbose: bool = False,
+):
     """
     This searches the AGN catalogs for a match for this target
     """
@@ -364,30 +369,40 @@ def agn_association_2d(target_id: int, radius: float = AGN_ASSOC_RADIUS):
     target = Target.objects.get(id=target_id)
     ra, dec = target.ra, target.dec
 
-    agn_catalogs = [Milliquas]  # there is currently only one, but this should help to "future proof" the code
+    agn_catalogs = [Milliquas,
+                    RomaBzcat,
+    ]
 
-    agn_matches = None
+    # agn_matches = None
     res = []
     start = time.time()
     for catalog in agn_catalogs:
         cat = catalog()
+        catname = str(cat)
+        if _verbose:
+            logger.info(f"Querying {cat}...")
         query_set = cat.query(ra, dec, radius)
+        if _verbose:
+            logger.info(f"Found {query_set.count()} matches in {catname}")
 
-        # no match found here! let's check another catalog!
+        # if no queries are returned we can skip this catalog
         if query_set.count() == 0:
             continue
 
-        if agn_matches is None:
-            agn_matches = query_set
-        else:
-            agn_matches |= query_set  # this will perform a SQL UNION on the query sets
+        # if agn_matches is None:
+        #     agn_matches = query_set
+        # else:
+        #     agn_matches |= query_set  # this will perform a SQL UNION on the query sets
 
         # convert to a dataframe and standardize the column names
-        df = pd.DataFrame(list(agn_matches.values()))
+        cols = list(cat.ogcols)
+        rows = query_set.values_list(*cols)
+        df = pd.DataFrame.from_records(rows, columns=cols)
         df = cat.to_standardized_catalog(df)
 
         # some extra cleaning before continuing
         df = df.dropna(subset=["default_mag", "ra", "dec"])  # drop rows without the information we need
+        df["trove_uniq"] = df["trove_uniq"].astype(int)  # set to an int
 
         # now save the cleaned dataset
         df["catalog"] = cat.__class__.__name__
@@ -398,7 +413,7 @@ def agn_association_2d(target_id: int, radius: float = AGN_ASSOC_RADIUS):
     else:  # return an empty dataframe
         return pd.DataFrame({})
 
-    # put any more cleaning up / filtering here; none for now
+    # TODO: put any more cleaning up / filtering here; none for now
     ret_df = df.copy()
 
     end = time.time()
@@ -406,7 +421,6 @@ def agn_association_2d(target_id: int, radius: float = AGN_ASSOC_RADIUS):
 
     # save the host galaxy dataframe to the TargetExtra "Associated AGN" keyword
     _save_associated_agn_df(ret_df, target)
-
     return ret_df
 
 # --- EVCC (Extended Virgo Cluster Catalog) geometric association -----------
