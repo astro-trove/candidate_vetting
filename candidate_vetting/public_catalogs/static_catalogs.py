@@ -67,6 +67,74 @@ class AsassnVariableStar(StaticCatalog):
 
 
 @citation(
+    doi="10.1088/0067-0049/215/2/22",
+    ads_bibcode="2014ApJS..215...22K",
+    data_url="https://doi.org/10.26093/cds/vizier.22150022",
+)
+class ExtendedVirgoClusterCatalog(StaticCatalog):
+    name = "EVCC"
+    catalog_model = EvccQ3C
+    ra_colname = "ra"
+    dec_colname = "dec"
+    mag_colname = "rmag"
+    colmap = {"eid": "trove_uniq", "name": "name", "ra": "ra", "dec": "dec", "rmag": "default_mag"}
+    hierarchical_name_columns = ["_ngc", "vcc", "evcc"]
+    
+    def to_standardized_catalog(self, df):
+        df["filter"] = "r"
+        return self._standardize_df(df)
+
+    def _annotate_with_coalesce(self, queryset):
+
+        # we first need to annotate the queryset with a cleaned up NGC column
+        queryset = queryset.annotate(_ngc=Concat(Value("NGC"), 'ngc'))
+
+        # then we can do the normal coalesce
+        return super(ExtendedVirgoClusterCatalog, self)._annotate_with_coalesce(queryset)
+
+      
+@citation(
+    doi="10.3847/1538-4365/ac78eb",
+    ads_bibcode="2022ApJS..261...38D",
+    data_url="https://datalab.noirlab.edu/data/delve",
+    version=3,
+)
+class DelveDr3(StaticCatalog):
+    name = "DELVE DR3"
+    catalog_model = DelveDr3Q3C
+    ra_colname = "ra"
+    dec_colname = "dec"
+    mag_colname = "mag_auto_r"
+    colmap = {
+        "coadd_object_id": "trove_uniq",
+        "ra": "ra",
+        "dec": "dec",
+        "mag_auto_r": "default_mag",
+        "dnf_z": "z",
+        "dnf_zsigma": "z_err",
+    }
+
+    def to_standardized_catalog(self, df):
+        # TODO: This seems to be the only column that could be a "name" in DELVE,
+        # maybe someone else can find something better though?
+        df["name"] = df["coadd_object_id"] 
+        df["filter"] = "r"
+        
+        df = self._standardize_df(df)
+
+        df["lumdist"] = cosmo.luminosity_distance(df.z).to(u.Mpc).value
+        df["lumdist_err"] = cosmo.luminosity_distance(df.z_err).to(u.Mpc).value
+        df["z_neg_err"] = df.z_err
+        df["z_pos_err"] = df.z_err
+        df["lumdist_neg_err"] = df.lumdist_err
+        df["lumdist_pos_err"] = df.lumdist_err
+        df["z_type"] = "photo-z"
+        df["submitter"] = ""
+
+        return df
+
+
+@citation(
     doi=[
         "10.1088/0004-6256/138/2/323",
         "10.1038/s41550-024-02370-0",
@@ -112,13 +180,15 @@ class Cosmicflows4(StaticCatalog):
     def to_standardized_catalog(self, df):
         df["lumdist_neg_err"] = df.e_dist
         df["lumdist_pos_err"] = df.e_dist
-
+        
         self.colmap["lumdist_neg_err"] = "lumdist_neg_err"
         self.colmap["lumdist_pos_err"] = "lumdist_pos_err"
 
         df["z_type"] = "z-ind."
         df["submitter"] = ""
 
+        df["filter"] = "r"
+        
         df = self._standardize_df(df)
 
         return df
@@ -259,6 +329,7 @@ class DesiDr1(StaticCatalog):
         df["lumdist_pos_err"] = df.lumdist_err
         df["z_type"] = "spec-z"
         df["submitter"] = ""
+        df["filter"] = "r"
         return df
 
 
@@ -391,10 +462,11 @@ class GladePlus(StaticCatalog):
     name = "GLADE+"
     catalog_model = GladePlusQ3C
     mag_colname = "b"
-
+    hierarchical_name_columns = ["gwgc", "hyperleda", "sdss", "wise", "twomass", "pgc", "gn"]
+    
     colmap = {
         "gid": "trove_uniq",
-        "gn": "name",
+        "name": "name",
         "z_helio": "z",
         "z_err": "z_err",
         "d_l": "lumdist",  # Mpc
@@ -417,6 +489,7 @@ class GladePlus(StaticCatalog):
 
         df["z_type"] = df.apply(_parse_dist_flag_col, axis=1)
 
+        df["filter"] = "b"
         df = self._standardize_df(df)
         df["z_neg_err"] = df.z_err
         df["z_pos_err"] = df.z_err
@@ -445,6 +518,7 @@ class Gwgc(StaticCatalog):
     mag_colname = "b_app"
 
     def to_standardized_catalog(self, df):
+        df["filter"] = "b"
         df = self._standardize_df(df)
         df["lumdist_neg_err"] = df.lumdist_err
         df["lumdist_pos_err"] = df.lumdist_err
@@ -482,7 +556,8 @@ class Hecate1(StaticCatalog):
         df["z_type"] = df.apply(lambda row: "z ind." if row.dmethod == "N" else "spec-z", axis=1)
 
         df["submitter"] = ""
-
+        df["filter"] = "r"
+        
         df = self._standardize_df(df)
 
         return df
@@ -529,6 +604,7 @@ class Hecate2(StaticCatalog):
 
         df["submitter"] = ""
 
+        df["filter"] = "r"
         df = self._standardize_df(df)
 
         return df
@@ -564,8 +640,7 @@ class LsDr9North(StaticCatalog):
         )
 
         self.colmap = {
-            "lid": "trove_uniq",
-            "objid": "name",
+            "lid": "name", # TODO: This col is kinda ugly as a name, but I don't think there is anything better? --Noah
             "ra": "ra",
             "dec": "dec",
             "default_mag": "default_mag",
@@ -586,6 +661,7 @@ class LsDr9North(StaticCatalog):
         self.colmap["z_neg_err"] = "z_neg_err"
         self.colmap["z_pos_err"] = "z_pos_err"
 
+        df["filter"] = "r"
         df = self._standardize_df(df)
         df["lumdist"] = cosmo.luminosity_distance(df.z).to(u.Mpc).value
         df["lumdist_err"] = cosmo.luminosity_distance(df.z_err).to(u.Mpc).value
@@ -630,8 +706,7 @@ class LsDr10South(StaticCatalog):
         )
 
         self.colmap = {
-            "lid": "trove_uniq",
-            "objid": "name",
+            "lid": "name", # TODO: This col is kinda ugly for the name, but I don't think there is anything better? --Noah
             "ra": "ra",
             "declination": "dec",
             "default_mag": "default_mag",
@@ -652,6 +727,7 @@ class LsDr10South(StaticCatalog):
         self.colmap["z_neg_err"] = "z_neg_err"
         self.colmap["z_pos_err"] = "z_pos_err"
 
+        df["filter"] = "r"
         df = self._standardize_df(df)
         df["lumdist"] = cosmo.luminosity_distance(df.z).to(u.Mpc).value
         df["lumdist_err"] = cosmo.luminosity_distance(df.z_err).to(u.Mpc).value
@@ -722,6 +798,7 @@ class Milliquas(StaticCatalog):
         super().__init__()
 
     def to_standardized_catalog(self, df):
+        df["filter"] = "r"
         df = self._standardize_df(df)
         df["z_neg_err"] = df.z_err
         df["z_pos_err"] = df.z_err
@@ -771,6 +848,7 @@ class NedLvs(StaticCatalog):
 
         df["z_type"] = df.apply(_get_ztype, axis=1)
 
+        df["filter"] = "J"
         df = self._standardize_df(df)
 
         # some rows don't have uncertainty on redshift
@@ -806,7 +884,7 @@ class Ps1(StaticCatalog):
     catalog_model = Ps1Q3C
     colmap = {
         "pid": "trove_uniq",
-        "objname": "name",
+        "name": "name",
         "ra": "ra",
         "dec": "dec",
         "z_phot": "z",
@@ -814,8 +892,10 @@ class Ps1(StaticCatalog):
         "rmeanpsfmag": "default_mag",  # mag col to use for pcc
     }
     mag_colname = "rmeanpsfmag"
+    hierarchical_name_columns = ["objname", "objid"]
 
     def to_standardized_catalog(self, df):
+        df["filter"] = "r"
         df = self._standardize_df(df)
         df["z_neg_err"] = df.z_err
         df["z_pos_err"] = df.z_err
@@ -946,15 +1026,17 @@ class Sdss12Photoz(StaticCatalog):
     catalog_model = Sdss12PhotozQ3C
     colmap = {
         "sid": "trove_uniq",
-        "sdssid": "name",
+        "name": "name",
         "ra": "ra",
         "dec": "dec",
         "zph": "z",
         "e_zph": "z_err",
         "rmag": "default_mag",
     }
-
+    hierarchical_name_columns = ["sdss12", "sdssid"]
+    
     def to_standardized_catalog(self, df):
+        df["filter"] = "r"
         df = self._standardize_df(df)
         df["z_neg_err"] = df.z_err
         df["z_pos_err"] = df.z_err
