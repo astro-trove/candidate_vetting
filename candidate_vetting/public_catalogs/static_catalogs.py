@@ -512,7 +512,6 @@ class LsDr9North(StaticCatalog):
         )
 
         self.colmap = {
-            "lid": "trove_uniq",
             "lid": "name", # TODO: This col is kinda ugly as a name, but I don't think there is anything better? --Noah
             "ra": "ra",
             "dec": "dec",
@@ -575,7 +574,6 @@ class LsDr10South(StaticCatalog):
         )
 
         self.colmap = {
-            "lid": "trove_uniq",
             "lid": "name", # TODO: This col is kinda ugly for the name, but I don't think there is anything better? --Noah
             "ra": "ra",
             "declination": "dec",
