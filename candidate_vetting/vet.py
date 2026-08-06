@@ -42,17 +42,18 @@ from candidate_vetting.public_catalogs.static_catalogs import (
     LsDr9North,
     LsDr10South,
     Ps1Galaxy,
-    Sdss12Photoz,
+    Sdss12PhotozGalaxy,
     AsassnVariableStar,
     Gaiadr3Variable,
     ZtfVarStar,
     Ps1PointSource,
     Milliquas,
+    RomaBzcat,
     NedLvs,
     # TwoMass,
     DesiDr1Galaxy,
     ExtendedVirgoClusterCatalog,
-    DelveDr3,
+    DelveDr3Galaxy,
 )
 
 if minversion(np, "2.0.0"):
@@ -78,6 +79,7 @@ HOST_DF_COLMAP = {
     "default_mag": "Mags",
     "catalog": "Source",
     "submitter": "Submitter",
+    "filter": "Filter"
 }
 HOST_DF_COLMAP_INVERSE = {v: k for k, v in HOST_DF_COLMAP.items()}
 
@@ -103,11 +105,11 @@ GALAXY_CATALOGS = [
     DesiDr1Galaxy,
     NedLvs,
     Cosmicflows4,
-    DelveDr3,
+    DelveDr3Galaxy,
     LsDr9North,
     LsDr10South,
     Ps1Galaxy,
-    Sdss12Photoz,
+    Sdss12PhotozGalaxy,
 ]
 
 
@@ -164,6 +166,7 @@ def _save_host_galaxy_df(df, target):
             "z_type",
             "default_mag",
             "catalog",
+            "filter",
             "submitter",
         ],
         axis=1
@@ -290,7 +293,10 @@ def host_association(
 
         # some extra cleaning before continuing
         df = df.dropna(subset=["default_mag", "ra", "dec"])  # drop rows without the information we need
-        df["trove_uniq"] = df["trove_uniq"].astype(int)  # set to an int
+        try:
+            df["trove_uniq"] = df["trove_uniq"].astype(int)  # set to an int
+        except KeyError:
+            df["trove_uniq"] = df["name"].astype(int) # need to do this for LS DR9 and LS DR10, for which name = their ID
 
         # copy the ang_dist column to a column called "offset" for
         # backwards compatability
@@ -356,7 +362,11 @@ def point_source_association(target_id: int, radius: float = 2):
     return matches
 
 
-def agn_association_2d(target_id: int, radius: float = AGN_ASSOC_RADIUS):
+def agn_association_2d(
+        target_id: int,
+        radius: float = AGN_ASSOC_RADIUS,
+        _verbose: bool = False,
+):
     """
     This searches the AGN catalogs for a match for this target
     """
@@ -364,30 +374,40 @@ def agn_association_2d(target_id: int, radius: float = AGN_ASSOC_RADIUS):
     target = Target.objects.get(id=target_id)
     ra, dec = target.ra, target.dec
 
-    agn_catalogs = [Milliquas]  # there is currently only one, but this should help to "future proof" the code
+    agn_catalogs = [Milliquas,
+                    RomaBzcat,
+    ]
 
-    agn_matches = None
+    # agn_matches = None
     res = []
     start = time.time()
     for catalog in agn_catalogs:
         cat = catalog()
+        catname = str(cat)
+        if _verbose:
+            logger.info(f"Querying {cat}...")
         query_set = cat.query(ra, dec, radius)
+        if _verbose:
+            logger.info(f"Found {query_set.count()} matches in {catname}")
 
-        # no match found here! let's check another catalog!
+        # if no queries are returned we can skip this catalog
         if query_set.count() == 0:
             continue
 
-        if agn_matches is None:
-            agn_matches = query_set
-        else:
-            agn_matches |= query_set  # this will perform a SQL UNION on the query sets
+        # if agn_matches is None:
+        #     agn_matches = query_set
+        # else:
+        #     agn_matches |= query_set  # this will perform a SQL UNION on the query sets
 
         # convert to a dataframe and standardize the column names
-        df = pd.DataFrame(list(agn_matches.values()))
+        cols = list(cat.ogcols)
+        rows = query_set.values_list(*cols)
+        df = pd.DataFrame.from_records(rows, columns=cols)
         df = cat.to_standardized_catalog(df)
 
         # some extra cleaning before continuing
         df = df.dropna(subset=["default_mag", "ra", "dec"])  # drop rows without the information we need
+        df["trove_uniq"] = df["trove_uniq"].astype(int)  # set to an int
 
         # now save the cleaned dataset
         df["catalog"] = cat.__class__.__name__
@@ -398,7 +418,7 @@ def agn_association_2d(target_id: int, radius: float = AGN_ASSOC_RADIUS):
     else:  # return an empty dataframe
         return pd.DataFrame({})
 
-    # put any more cleaning up / filtering here; none for now
+    # TODO: put any more cleaning up / filtering here; none for now
     ret_df = df.copy()
 
     end = time.time()
@@ -406,7 +426,6 @@ def agn_association_2d(target_id: int, radius: float = AGN_ASSOC_RADIUS):
 
     # save the host galaxy dataframe to the TargetExtra "Associated AGN" keyword
     _save_associated_agn_df(ret_df, target)
-
     return ret_df
 
 # --- EVCC (Extended Virgo Cluster Catalog) geometric association -----------
