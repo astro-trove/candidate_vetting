@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "candidate-vetting"
-version = "0.2.0a1"
+version = "0.5.0"
 description = "Target and Observation Manager App for candidate vetting"
 readme = "README.md"
 license = {file = "LICENSE"}
