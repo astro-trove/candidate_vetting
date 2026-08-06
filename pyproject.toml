@@ -36,7 +36,7 @@ dependencies = [
     "SQLAlchemy",
     "fundamentals",
     "tomtoolkit @ git+https://github.com/noahfranz13/tom_base.git@v2.32.3",
-    "trove_mpc @ git+https://github.com/astro-trove/trove-mpc.git",
+    "trove_mpc @ git+https://github.com/astro-trove/trove-mpc.git@v0.1.0",
 ]
 
 [project.optional-dependencies]

@@ -78,6 +78,7 @@ HOST_DF_COLMAP = {
     "default_mag": "Mags",
     "catalog": "Source",
     "submitter": "Submitter",
+    "filter": "Filter"
 }
 HOST_DF_COLMAP_INVERSE = {v: k for k, v in HOST_DF_COLMAP.items()}
 
@@ -164,6 +165,7 @@ def _save_host_galaxy_df(df, target):
             "z_type",
             "default_mag",
             "catalog",
+            "filter",
             "submitter",
         ],
         axis=1
@@ -290,7 +292,10 @@ def host_association(
 
         # some extra cleaning before continuing
         df = df.dropna(subset=["default_mag", "ra", "dec"])  # drop rows without the information we need
-        df["trove_uniq"] = df["trove_uniq"].astype(int)  # set to an int
+        try:
+            df["trove_uniq"] = df["trove_uniq"].astype(int)  # set to an int
+        except KeyError:
+            df["trove_uniq"] = df["name"].astype(int) # need to do this for LS DR9 and LS DR10, for which name = their ID
 
         # copy the ang_dist column to a column called "offset" for
         # backwards compatability
