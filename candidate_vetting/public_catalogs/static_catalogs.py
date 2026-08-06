@@ -8,7 +8,7 @@ import pandas as pd
 import numpy as np
 
 from django.db.models import F, Q, Func, Value, IntegerField, Case, When, CharField
-from django.db.models.functions import Cast
+from django.db.models.functions import Cast, Concat
 from django.conf import settings
 
 from .catalog import StaticCatalog
@@ -156,7 +156,10 @@ class DelveDr3(StaticCatalog):
         super().__init__()
 
     def to_standardized_catalog(self, df):
-        df["name"] = df["coadd_object_id"]
+        # TODO: This seems to be the only column that could be a "name" in DELVE,
+        # maybe someone else can find something better though?
+        df["name"] = df["coadd_object_id"] 
+        df["filter"] = "r"
 
         df = self._standardize_df(df)
 
@@ -352,10 +355,20 @@ class ExtendedVirgoClusterCatalog(StaticCatalog):
     dec_colname = "dec"
     mag_colname = "rmag"
     colmap = {"eid": "trove_uniq", "evcc": "name", "ra": "ra", "dec": "dec", "rmag": "default_mag"}
+    hierarchical_name_columns = ["_ngc", "vcc", "evcc"]
 
     def to_standardized_catalog(self, df):
+        df["filter"] = "r"
         return self._standardize_df(df)
 
+    def _annotate_with_coalesce(self, queryset):
+
+        # we first need to annotate the queryset with a cleaned up NGC column
+        queryset = queryset.annotate(_ngc=Concat(Value("NGC"), 'ngc'))
+
+        # then we can do the normal coalesce
+        return super(ExtendedVirgoClusterCatalog, self)._annotate_with_coalesce(queryset)
+    
 
 @citation()
 class FermiLat(StaticCatalog):
