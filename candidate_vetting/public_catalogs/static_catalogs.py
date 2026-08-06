@@ -67,74 +67,6 @@ class AsassnVariableStar(StaticCatalog):
 
 
 @citation(
-    doi="10.1088/0067-0049/215/2/22",
-    ads_bibcode="2014ApJS..215...22K",
-    data_url="https://doi.org/10.26093/cds/vizier.22150022",
-)
-class ExtendedVirgoClusterCatalog(StaticCatalog):
-    name = "EVCC"
-    catalog_model = EvccQ3C
-    ra_colname = "ra"
-    dec_colname = "dec"
-    mag_colname = "rmag"
-    colmap = {"eid": "trove_uniq", "name": "name", "ra": "ra", "dec": "dec", "rmag": "default_mag"}
-    hierarchical_name_columns = ["_ngc", "vcc", "evcc"]
-    
-    def to_standardized_catalog(self, df):
-        df["filter"] = "r"
-        return self._standardize_df(df)
-
-    def _annotate_with_coalesce(self, queryset):
-
-        # we first need to annotate the queryset with a cleaned up NGC column
-        queryset = queryset.annotate(_ngc=Concat(Value("NGC"), 'ngc'))
-
-        # then we can do the normal coalesce
-        return super(ExtendedVirgoClusterCatalog, self)._annotate_with_coalesce(queryset)
-
-      
-@citation(
-    doi="10.3847/1538-4365/ac78eb",
-    ads_bibcode="2022ApJS..261...38D",
-    data_url="https://datalab.noirlab.edu/data/delve",
-    version=3,
-)
-class DelveDr3(StaticCatalog):
-    name = "DELVE DR3"
-    catalog_model = DelveDr3Q3C
-    ra_colname = "ra"
-    dec_colname = "dec"
-    mag_colname = "mag_auto_r"
-    colmap = {
-        "coadd_object_id": "trove_uniq",
-        "ra": "ra",
-        "dec": "dec",
-        "mag_auto_r": "default_mag",
-        "dnf_z": "z",
-        "dnf_zsigma": "z_err",
-    }
-
-    def to_standardized_catalog(self, df):
-        # TODO: This seems to be the only column that could be a "name" in DELVE,
-        # maybe someone else can find something better though?
-        df["name"] = df["coadd_object_id"] 
-        df["filter"] = "r"
-        
-        df = self._standardize_df(df)
-
-        df["lumdist"] = cosmo.luminosity_distance(df.z).to(u.Mpc).value
-        df["lumdist_err"] = cosmo.luminosity_distance(df.z_err).to(u.Mpc).value
-        df["z_neg_err"] = df.z_err
-        df["z_pos_err"] = df.z_err
-        df["lumdist_neg_err"] = df.lumdist_err
-        df["lumdist_pos_err"] = df.lumdist_err
-        df["z_type"] = "photo-z"
-        df["submitter"] = ""
-
-        return df
-
-
-@citation(
     doi=[
         "10.1088/0004-6256/138/2/323",
         "10.1038/s41550-024-02370-0",
@@ -193,7 +125,6 @@ class Cosmicflows4(StaticCatalog):
 
         return df
 
-
 @citation(
     doi="10.3847/1538-4365/ac78eb",
     ads_bibcode="2022ApJS..261...38D",
@@ -230,7 +161,7 @@ class DelveDr3(StaticCatalog):
         # maybe someone else can find something better though?
         df["name"] = df["coadd_object_id"] 
         df["filter"] = "r"
-
+        
         df = self._standardize_df(df)
 
         df["lumdist"] = cosmo.luminosity_distance(df.z).to(u.Mpc).value
