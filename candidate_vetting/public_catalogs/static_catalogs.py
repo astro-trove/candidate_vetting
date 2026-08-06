@@ -12,7 +12,12 @@ from django.db.models.functions import Cast, Concat
 from django.conf import settings
 
 from .catalog import StaticCatalog
-from .util import PS1_POINT_SOURCE_THRESHOLD, RADIUS_ARCSEC, citation
+from .util import (
+    PS1_TB18_POINT_SOURCE_THRESHOLD,
+    PS1_B21_DECISION_BOUNDARY,
+    RADIUS_ARCSEC,
+    citation
+)
 from ..models import (
     AsassnQ3C,
     Cosmicflows4Q3C,
@@ -59,73 +64,6 @@ class AsassnVariableStar(StaticCatalog):
 
     name = "ASAS-SN X"
     catalog_model = AsassnQ3C
-
-
-@citation(
-    doi="10.1088/0067-0049/215/2/22",
-    ads_bibcode="2014ApJS..215...22K",
-    data_url="https://doi.org/10.26093/cds/vizier.22150022",
-)
-class ExtendedVirgoClusterCatalog(StaticCatalog):
-    name = "EVCC"
-    catalog_model = EvccQ3C
-    ra_colname = "ra"
-    dec_colname = "dec"
-    mag_colname = "rmag"
-    colmap = {"eid": "trove_uniq", "name": "name", "ra": "ra", "dec": "dec", "rmag": "default_mag"}
-    hierarchical_name_columns = ["_ngc", "vcc", "evcc"]
-    
-    def to_standardized_catalog(self, df):
-        df["filter"] = "r"
-        return self._standardize_df(df)
-
-    def _annotate_with_coalesce(self, queryset):
-
-        # we first need to annotate the queryset with a cleaned up NGC column
-        queryset = queryset.annotate(_ngc=Concat(Value("NGC"), 'ngc'))
-
-        # then we can do the normal coalesce
-        return super(ExtendedVirgoClusterCatalog, self)._annotate_with_coalesce(queryset)
-
-@citation(
-    doi="10.3847/1538-4365/ac78eb",
-    ads_bibcode="2022ApJS..261...38D",
-    data_url="https://datalab.noirlab.edu/data/delve",
-    version=3,
-)
-class DelveDr3(StaticCatalog):
-    name = "DELVE DR3"
-    catalog_model = DelveDr3Q3C
-    ra_colname = "ra"
-    dec_colname = "dec"
-    mag_colname = "mag_auto_r"
-    colmap = {
-        "coadd_object_id": "trove_uniq",
-        "ra": "ra",
-        "dec": "dec",
-        "mag_auto_r": "default_mag",
-        "dnf_z": "z",
-        "dnf_zsigma": "z_err",
-    }
-
-    def to_standardized_catalog(self, df):
-        # TODO: This seems to be the only column that could be a "name" in DELVE,
-        # maybe someone else can find something better though?
-        df["name"] = df["coadd_object_id"] 
-        df["filter"] = "r"
-        
-        df = self._standardize_df(df)
-
-        df["lumdist"] = cosmo.luminosity_distance(df.z).to(u.Mpc).value
-        df["lumdist_err"] = cosmo.luminosity_distance(df.z_err).to(u.Mpc).value
-        df["z_neg_err"] = df.z_err
-        df["z_pos_err"] = df.z_err
-        df["lumdist_neg_err"] = df.lumdist_err
-        df["lumdist_pos_err"] = df.lumdist_err
-        df["z_type"] = "photo-z"
-        df["submitter"] = ""
-
-        return df
 
 
 @citation(
@@ -186,6 +124,96 @@ class Cosmicflows4(StaticCatalog):
         df = self._standardize_df(df)
 
         return df
+
+@citation(
+    doi="10.3847/1538-4365/ac78eb",
+    ads_bibcode="2022ApJS..261...38D",
+    data_url="https://datalab.noirlab.edu/data/delve",
+    version=3,
+)
+class DelveDr3(StaticCatalog):
+    """DECam Local Volume Exploration (DELVE) Data Release 3 catalog"""
+
+    name = "DELVE DR3"
+    catalog_model = DelveDr3Q3C
+    ra_colname = "ra"
+    dec_colname = "dec"
+    mag_colname = "mag_auto_r"
+    colmap = {
+        "coadd_object_id": "trove_uniq",
+        "ra": "ra",
+        "dec": "dec",
+        "mag_auto_r": "default_mag",
+        "dnf_z": "z",
+        "dnf_zsigma": "z_err",
+    }
+
+    def __init__(self):
+        # select for g-band magnitudes between 22 and 19
+        # see Drlica-Wagner et al. 2022
+        self.catalog_model.objects = self.catalog_model.objects.filter(
+            mag_auto_g__range=(19,22),
+        )
+        super().__init__()
+
+    def to_standardized_catalog(self, df):
+        # TODO: This seems to be the only column that could be a "name" in DELVE,
+        # maybe someone else can find something better though?
+        df["name"] = df["coadd_object_id"] 
+        df["filter"] = "r"
+        
+        df = self._standardize_df(df)
+
+        df["lumdist"] = cosmo.luminosity_distance(df.z).to(u.Mpc).value
+        df["lumdist_err"] = cosmo.luminosity_distance(df.z_err).to(u.Mpc).value
+        df["z_neg_err"] = df.z_err
+        df["z_pos_err"] = df.z_err
+        df["lumdist_neg_err"] = df.lumdist_err
+        df["lumdist_pos_err"] = df.lumdist_err
+        df["z_type"] = "photo-z"
+        df["submitter"] = ""
+
+        return df
+
+
+@citation(
+    doi="10.3847/1538-4365/ac78eb",
+    ads_bibcode="2022ApJS..261...38D",
+    data_url="https://datalab.noirlab.edu/data/delve",
+    version=3,
+)
+class DelveDr3Galaxy(DelveDr3):
+    """DECam Local Volume Exploration (DELVE) Data Release 3 catalog, with
+    futher filtering to select for **galaxies**"""
+
+    name = "DELVE DR3"
+
+    # filter based on extendedness parameter from SourceExtractor
+    # see Drlica-Wagner et al. 2022
+    # extended_coadd: 0 = confident star, 1 = likely star, 2 = likely galaxy, 3 = confident galaxy
+    def query(self, ra, dec, radius=RADIUS_ARCSEC):
+        query_set = super().query(ra, dec, radius)
+        return query_set.filter(ext_coadd__gte=2)
+
+
+@citation(
+    doi="10.3847/1538-4365/ac78eb",
+    ads_bibcode="2022ApJS..261...38D",
+    data_url="https://datalab.noirlab.edu/data/delve",
+    version=3,
+)
+class DelveDr3Star(DelveDr3):
+    """DECam Local Volume Exploration (DELVE) Data Release 3 catalog, with
+    futher filtering to select for **stars**"""
+
+    name = "DELVE DR3"
+
+    # filter based on extendedness parameter from SourceExtractor
+    # see Drlica-Wagner et al. 2022
+    # extended_coadd: 0 = confident star, 1 = likely star, 2 = likely galaxy, 3 = confident galaxy
+    def query(self, ra, dec, radius=RADIUS_ARCSEC):
+        query_set = super().query(ra, dec, radius)
+        return query_set.filter(ext_coadd__lte=1)
 
 
 @citation(doi="10.3847/1538-3881/ae4c43", ads_bibcode="2026AJ....171..285D")
@@ -316,6 +344,33 @@ class DesiSpec(StaticCatalog):
         df["submitter"] = ""
         return df
 
+
+@citation(
+    doi="10.1088/0067-0049/215/2/22",
+    ads_bibcode="2014ApJS..215...22K",
+    data_url="https://doi.org/10.26093/cds/vizier.22150022",
+)
+class ExtendedVirgoClusterCatalog(StaticCatalog):
+    name = "EVCC"
+    catalog_model = EvccQ3C
+    ra_colname = "ra"
+    dec_colname = "dec"
+    mag_colname = "rmag"
+    colmap = {"eid": "trove_uniq", "evcc": "name", "ra": "ra", "dec": "dec", "rmag": "default_mag"}
+    hierarchical_name_columns = ["_ngc", "vcc", "evcc"]
+
+    def to_standardized_catalog(self, df):
+        df["filter"] = "r"
+        return self._standardize_df(df)
+
+    def _annotate_with_coalesce(self, queryset):
+
+        # we first need to annotate the queryset with a cleaned up NGC column
+        queryset = queryset.annotate(_ngc=Concat(Value("NGC"), 'ngc'))
+
+        # then we can do the normal coalesce
+        return super(ExtendedVirgoClusterCatalog, self)._annotate_with_coalesce(queryset)
+    
 
 @citation()
 class FermiLat(StaticCatalog):
@@ -507,7 +562,11 @@ class LsDr9North(StaticCatalog):
 
     def __init__(self):
         # flux_r is in nanomaggy
-        self.catalog_model.objects = self.catalog_model.objects.filter(flux_r__gt=0).annotate(
+        self.catalog_model.objects = self.catalog_model.objects.filter(
+            flux_r__gt=0
+        ).exclude(
+            type="PSF",
+        ).annotate(
             default_mag=22.5 - 2.5 * _Log10("flux_r")
         )
 
@@ -569,7 +628,11 @@ class LsDr10South(StaticCatalog):
 
     def __init__(self):
         # flux_r is in nanomaggy
-        self.catalog_model.objects = self.catalog_model.objects.filter(flux_r__gt=0).annotate(
+        self.catalog_model.objects = self.catalog_model.objects.filter(
+            flux_r__gt=0
+        ).exclude(
+            mtype="PSF",
+        ).annotate(
             default_mag=22.5 - 2.5 * _Log10("flux_r")
         )
 
@@ -651,6 +714,7 @@ class Milliquas(StaticCatalog):
 
         # now that we have these annotations, we can define the colmap
         self.colmap = {
+            "mid":"trove_uniq",
             "name": "name",
             "ra": "ra",
             "dec": "dec",
@@ -737,7 +801,10 @@ class NedLvs(StaticCatalog):
         return df
 
 
-@citation(doi="10.1093/mnras/staa2587", ads_bibcode="2021MNRAS.500.1633B")
+@citation(
+    doi=["10.1088/1538-3873/aae3d9", "10.1093/mnras/staa2587"],
+    ads_bibcode=["2018PASP..130l8001T", "2021MNRAS.500.1633B"],
+)
 class Ps1(StaticCatalog):
     """
     Pan-STARRS 1 Source Types and Redshifts with Machine Learning (PS1-STRM)
@@ -772,44 +839,106 @@ class Ps1(StaticCatalog):
         return df
 
 
-@citation(doi="10.1093/mnras/staa2587", ads_bibcode="2021MNRAS.500.1633B")
+@citation(
+    doi=["10.1088/1538-3873/aae3d9", "10.1093/mnras/staa2587"],
+    ads_bibcode=["2018PASP..130l8001T", "2021MNRAS.500.1633B"],
+)
 class Ps1Galaxy(Ps1):
     """
     Pan-STARRS 1 Source Types and Redshifts with Machine Learning (PS1-STRM)
     catalogue, which classifies sources as point sources, quasars, or galaxies,
-    selecting for objects with point source score < 0.83
+    selecting for objects with Tachibana & Miller 18 point source
+    score < 0.83, Beck+21 prob_galaxy > 0.7, and Beck+21 prob_star < 0.7
     """
 
     name = "PS1 STRM"
 
     def query(self, ra, dec, radius=RADIUS_ARCSEC):
         query_set = super().query(ra, dec, radius)
-        return query_set.filter(ps_score__lte=PS1_POINT_SOURCE_THRESHOLD, rmeanpsfmag__gt=0)
+        return query_set.filter(
+            ps_score__lt=PS1_TB18_POINT_SOURCE_THRESHOLD,
+            prob_galaxy__gt=PS1_B21_DECISION_BOUNDARY,
+            prob_star__lt=PS1_B21_DECISION_BOUNDARY,
+            rmeanpsfmag__gt=0
+        )
 
 
-@citation(doi="10.1093/mnras/staa2587", ads_bibcode="2021MNRAS.500.1633B")
+@citation(
+    doi=["10.1088/1538-3873/aae3d9", "10.1093/mnras/staa2587"],
+    ads_bibcode=["2018PASP..130l8001T", "2021MNRAS.500.1633B"],
+)
 class Ps1PointSource(Ps1):
     """
     Pan-STARRS 1 Source Types and Redshifts with Machine Learning (PS1-STRM)
     catalogue, which classifies sources as point sources, quasars, or galaxies,
-    selecting for objects with galaxy score < 0.7
+    selecting for objects with Beck+21 prob_galaxy < 0.7
     """
 
     name = "PS1 STRM"
 
     def query(self, ra, dec, radius=RADIUS_ARCSEC):
         query_set = super().query(ra, dec, radius)
-        return query_set.filter(ps_score__gt=PS1_POINT_SOURCE_THRESHOLD, prob_galaxy__lt=0.7)
+        return query_set.filter(
+            ps_score__gt=PS1_TB18_POINT_SOURCE_THRESHOLD,
+            prob_galaxy__lt=PS1_TB18_POINT_SOURCE_THRESHOLD
+        )
 
 
-@citation()
+@citation(
+    doi=["10.1088/1538-3873/aae3d9", "10.1093/mnras/staa2587"],
+    ads_bibcode=["2018PASP..130l8001T", "2021MNRAS.500.1633B"],
+)
+class Ps1Qso(Ps1):
+    """
+    Pan-STARRS 1 Source Types and Redshifts with Machine Learning (PS1-STRM)
+    catalogue, which classifies sources as point sources, quasars, or galaxies,
+    selecting for objects with Beck+21 prob_qso > 0.7
+    """
+
+    name = "PS1 STRM"
+
+    def query(self, ra, dec, radius=RADIUS_ARCSEC):
+        query_set = super().query(ra, dec, radius)
+        return query_set.filter(
+            prob_qso__gt=PS1_B21_DECISION_BOUNDARY
+        )
+
+
+@citation(
+    doi="10.1007/s10509-015-2254-2",
+    ads_bibcode="2015Ap&SS.357...75M",
+    version="5th edition",
+    data_url="https://heasarc.gsfc.nasa.gov/w3browse/all/romabzcat.html",
+)
 class RomaBzcat(StaticCatalog):
     """
-    TODO: Add catalog description
-    TODO: Add citation
+    Roma-BZCAT catalog of over 3000 blazars.
     """
 
+    name = "Roma-BZCAT"
     catalog_model = RomaBzcatQ3C
+    colmap = {
+        "rid":"trove_uniq",
+        "name": "name",
+        "ra": "ra",
+        "dec": "dec",
+        "z": "z",
+        "z_err": "z_err",
+        "rmag": "default_mag",
+        }
+    mag_colname = "rmag"
+
+    def to_standardized_catalog(self, df):
+        df = self._standardize_df(df)
+        df["z_neg_err"] = df.z_err
+        df["z_pos_err"] = df.z_err
+        df["lumdist"] = cosmo.luminosity_distance(df.z).to(u.Mpc).value
+        df["lumdist_err"] = cosmo.luminosity_distance(df.z_err).to(u.Mpc).value
+        df["lumdist_neg_err"] = df.lumdist_err
+        df["lumdist_pos_err"] = df.lumdist_err
+        df["z_type"] = "spec-z"
+        df["submitter"] = ""
+        return df
 
 
 @citation(
@@ -849,6 +978,69 @@ class Sdss12Photoz(StaticCatalog):
         df["z_type"] = "photo-z"
         df["submitter"] = ""
         return df
+
+
+@citation(
+    doi="10.1088/0067-0049/219/1/12",
+    ads_bibcode="2015ApJS..219...12A",
+    version="DR11 & DR12",
+)
+class Sdss12PhotozGalaxy(Sdss12Photoz):
+    """
+    Photometric redshifts catalog built using imaging and spectra from Data
+    Releases 11 and 12 of SDSS, filtering to select for **galaxies**
+    """
+
+    name = "SDSS DR12"
+
+    def query(self, ra, dec, radius=RADIUS_ARCSEC):
+        query_set = super().query(ra, dec, radius)
+        return query_set.filter(
+            classifier=3, # galaxy
+            spclass="GALAXY",
+            f_zsp=0, # zwarning flag
+        )
+
+
+@citation(
+    doi="10.1088/0067-0049/219/1/12",
+    ads_bibcode="2015ApJS..219...12A",
+    version="DR11 & DR12",
+)
+class Sdss12PhotozQuasar(Sdss12Photoz):
+    """
+    Photometric redshifts catalog built using imaging and spectra from Data
+    Releases 11 and 12 of SDSS, filtering to select for **quasars**
+    """
+
+    name = "SDSS DR12"
+
+    def query(self, ra, dec, radius=RADIUS_ARCSEC):
+        query_set = super().query(ra, dec, radius)
+        return query_set.filter(
+            spclass="QSO"
+        )
+
+
+@citation(
+    doi="10.1088/0067-0049/219/1/12",
+    ads_bibcode="2015ApJS..219...12A",
+    version="DR11 & DR12",
+)
+class Sdss12PhotozStar(Sdss12Photoz):
+    """
+    Photometric redshifts catalog built using imaging and spectra from Data
+    Releases 11 and 12 of SDSS, filtering to select for **stars**
+    """
+
+    name = "SDSS DR12"
+
+    def query(self, ra, dec, radius=RADIUS_ARCSEC):
+        query_set = super().query(ra, dec, radius)
+        return query_set.filter(
+            classifier=6, # star
+            spclass="STAR"
+        )
 
 
 @citation()
