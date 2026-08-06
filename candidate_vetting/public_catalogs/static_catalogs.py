@@ -361,7 +361,11 @@ class ExtendedVirgoClusterCatalog(StaticCatalog):
 
     def to_standardized_catalog(self, df):
         df["filter"] = "r"
-        return self._standardize_df(df)
+        df = self._standardize_df(df)
+        df["lumdist"] = 18.
+        df["lumdist_neg_err"] = 2.
+        df["lumdist_pos_err"] = 4.
+        return df
 
     def _annotate_with_coalesce(self, queryset):
 
