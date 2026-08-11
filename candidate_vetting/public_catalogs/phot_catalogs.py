@@ -34,6 +34,7 @@ from fundamentals.stats import rolling_window_sigma_clip
 from django.conf import settings
 from django.db.models import F, FloatField, ExpressionWrapper
 from django.db.models.functions import Sqrt
+from django.contrib import messages
 
 from .catalog import PhotCatalog
 from .util import _QUERY_METHOD_DOCSTRING, RADIUS_ARCSEC, create_phot
@@ -525,6 +526,9 @@ class ZTF_Forced_Phot(PhotCatalog):
 
     def __init__(self):
 
+        self.ztffp_base_url = "https://ztfweb.ipac.caltech.edu/cgi-bin/requestForcedPhotometry.cgi"
+
+        
         self._generic_ztfuser = "ztffps"
         self._generic_ztfinfo = "dontgocrazy!"
 
@@ -555,6 +559,10 @@ class ZTF_Forced_Phot(PhotCatalog):
 
         ztf_logs = self._ztf_forced_photometry(target.ra, target.dec, days=days_ago)
 
+        if ztf_logs is None:
+            logger.warning(f"ZTF forced photometry request failed for {target.name}. Skipping.")
+            return
+        
         if not wait_for_results:
             return
 
@@ -800,20 +808,34 @@ class ZTF_Forced_Phot(PhotCatalog):
 
         logger.info("Sending ZTF request for (R.A.,Decl)=(%s,%s)" % (ra, decl))
 
-        wget_command = (
-            'wget --http-user=%s --http-passwd=%s -O %s "https://ztfweb.ipac.caltech.edu/cgi-bin/requestForcedPhotometry.cgi?'
-            % (self._generic_ztfuser, self._generic_ztfinfo, log_file_name)
-            + "ra=%s&" % ra_str
-            + "dec=%s&" % decl_str
-            + "jdstart=%s&" % jdstart_str
-            + "jdend=%s&" % jdend_str
-            + 'email=%s&userpass=%s"' % (self._ztffp_user_address, self._ztffp_user_password)
-        )
-        logger.info(wget_command)
-
         if send:
-            p = subprocess.Popen(wget_command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
-            stdout, stderr = p.communicate()
+            try:
+                response = requests.get(
+                    self.ztffp_base_url,
+                    params={
+                        "ra": ra_str,
+                        "dec": decl_str,
+                        "jdstart": jdstart_str,
+                        "jdend": jdend_str,
+                        "email": self._ztffp_user_address,
+                        "userpass": self._ztffp_user_password,
+                    },
+                    auth=(self._generic_ztfuser, self._generic_ztfinfo),
+                    timeout=30,
+                )
+                response.raise_for_status()
+            except requests.exceptions.RequestException as exc:
+                logger.error(f"ZTF forced photometry request failed for (R.A.,Decl)=({ra},{decl}): {e}")
+                messages.warning(
+                    request,
+                    "ZTF forced photometry request failed. The service may be temporarily unavailable. Please try again later."
+                )
+                return None
+                
+            with open(log_file_name, 'w') as f:
+                f.write(response.text)
+            
+            logger.info(f"ZTF FP sent successfully and log written to {log_file_name}")
 
         os.chmod(log_file_name, 0o0777)
         return log_file_name
