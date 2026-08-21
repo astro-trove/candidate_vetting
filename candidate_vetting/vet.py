@@ -24,7 +24,7 @@ from tom_nonlocalizedevents.models import NonLocalizedEvent
 #     uniq_to_bigintrange,
 #     update_all_credible_region_percents_for_candidates
 # )
-from tom_dataproducts.models import ReducedDatum
+from tom_dataproducts.models import PhotometryReducedDatum
 
 from astropy.coordinates import angular_separation
 import astropy.units as u
@@ -516,12 +516,11 @@ def run_mpc(target_id: int) -> None:
     target = Target.objects.get(id=target_id)
 
     # get photometry, throwing out limiting mags, phot with no error, and phot with SNR < 5
-    phot = ReducedDatum.objects.filter(
+    phot = PhotometryReducedDatum.objects.filter(
         target_id=target_id,
-        data_type="photometry",
-        value__magnitude__isnull=False,
-        value__error__isnull=False,
-        value__error__lte=2.5 / np.log(10) / 5,
+        brightness__isnull=False,
+        brightness_error__isnull=False,
+        brightness_error__lte=2.5 / np.log(10) / 5,
     )
     # if more than (5-sigma) 1 detection, likely not a MPC object
     if phot.exists() and len(phot) > 1:

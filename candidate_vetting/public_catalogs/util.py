@@ -16,7 +16,7 @@ from django.db.models import (
 from django.db.models import F, Value
 from django.db.models.functions import Pi, Exp, Power
 
-from tom_dataproducts.models import ReducedDatum
+from tom_dataproducts.models import PhotometryReducedDatum
 
 RADIUS_ARCSEC = 2.0
 
@@ -47,28 +47,6 @@ Returns
 QueryResult
     The result of the query, either a Galaxy or PointSource class
 """
-
-
-def create_phot(target, time, fluxdict, source):
-    """This creates a photometry point for "target"
-
-    Returns True if it was created, false if it already existed
-    """
-    if not fluxdict:
-        warnings.warn("fluxdict is empty")
-    elif "magnitude" in fluxdict.keys() and not ("error" in fluxdict.keys()):
-        warnings.warn("Data point contains a magnitude but not an associated " + "error")
-    elif not (("magnitude" in fluxdict.keys() and "error" in fluxdict.keys()) ^ ("limit" in fluxdict.keys())):
-        raise ValueError("Must pass EITHER a magnitude and associated error " + "OR a limit, but not both")
-
-    _, created = ReducedDatum.objects.get_or_create(
-        timestamp=time,
-        value=fluxdict,
-        source_name=source,
-        data_type="photometry",
-        target=target,
-    )
-    return created
 
 
 class ConeSearch(Func):
