@@ -314,7 +314,7 @@ class ATLAS_Forced_Phot(PhotCatalog):
             time.format = "datetime"
             value = {
                 "filter": str(datum["F"]),
-                "telescope": "ATLAS",
+                "telescope": f"ATLAS-{datum['tel']}",
             }
             # If the signal is in the noise, calculate the non-detection limit from the reported flux uncertainty.
             # see https://fallingstar-data.com/forcedphot/resultdesc/
@@ -347,9 +347,9 @@ class ATLAS_Forced_Phot(PhotCatalog):
 
         # c = cyan, o = arange
         magnitudes = {
-            "c": {"mjds": [], "mags": [], "magErrs": [], "lim5sig": []},
-            "o": {"mjds": [], "mags": [], "magErrs": [], "lim5sig": []},
-            "I": {"mjds": [], "mags": [], "magErrs": [], "lim5sig": []},
+            "c": {"mjds": [], "mags": [], "magErrs": [], "lim5sig": [], "tels": []},
+            "o": {"mjds": [], "mags": [], "magErrs": [], "lim5sig": [], "tels": []},
+            "I": {"mjds": [], "mags": [], "magErrs": [], "lim5sig": [], "tels": []},
         }
 
         # SPLIT BY FILTER
@@ -359,6 +359,7 @@ class ATLAS_Forced_Phot(PhotCatalog):
                 magnitudes[epoch["F"]]["mags"].append(epoch["uJy"])
                 magnitudes[epoch["F"]]["magErrs"].append(epoch["duJy"])
                 magnitudes[epoch["F"]]["lim5sig"].append(epoch["mag5sig"])
+                magnitudes[epoch["F"]]["tels"].append(epoch["Obs"][:2])
 
         # STACK PHOTOMETRY IF REQUIRED
         stacked_magnitudes = self._stack_photometry(magnitudes, binningDays=1)
@@ -438,23 +439,15 @@ class ATLAS_Forced_Phot(PhotCatalog):
         return cepochs + oepochs
 
     def _stack_photometry(self, magnitudes, binningDays=1.0):
-        # IF WE WANT TO 'STACK' THE PHOTOMETRY
-        summedMagnitudes = {
-            "c": {"mjds": [], "mags": [], "magErrs": [], "n": [], "lim5sig": []},
-            "o": {"mjds": [], "mags": [], "magErrs": [], "n": [], "lim5sig": []},
-            "I": {"mjds": [], "mags": [], "magErrs": [], "n": [], "lim5sig": []},
-        }
-
-        # MAGNITUDES/FLUXES ARE DIVIDED IN UNIQUE FILTER SETS - SO ITERATE OVER
-        # FILTERS
+        # MAGNITUDES/FLUXES ARE DIVIDED IN UNIQUE FILTER SETS - SO ITERATE OVER FILTERS
         allData = []
         for fil, data in list(magnitudes.items()):
             # WE'RE GOING TO CREATE FURTHER SUBSETS FOR EACH UNQIUE MJD (FLOORED TO AN INTEGER)
             # MAG VARIABLE == FLUX (JUST TO CONFUSE YOU)
             distinctMjds = {}
-            for mjd, flx, err, lim in zip(data["mjds"], data["mags"], data["magErrs"], data["lim5sig"]):
-                # DICT KEY IS THE UNIQUE INTEGER MJD
-                key = str(int(math.floor(mjd / float(binningDays))))
+            for mjd, flx, err, lim, tel in zip(data["mjds"], data["mags"], data["magErrs"], data["lim5sig"], data["tels"]):
+                # DICT KEY IS THE TELESCOPE PLUS THE UNIQUE INTEGER MJD
+                key = f'{tel}a{int(math.floor(mjd / float(binningDays))):d}'
                 # FIRST DATA POINT OF THE NIGHTS? CREATE NEW DATA SET
                 if key not in distinctMjds:
                     distinctMjds[key] = {
@@ -493,12 +486,6 @@ class ATLAS_Forced_Phot(PhotCatalog):
                 # GIVE ME NUMBER OF DATA POINTS COMBINED
                 n = len(v["mjds"])
 
-                summedMagnitudes[fil]["mjds"].append(meanMjd)
-                summedMagnitudes[fil]["mags"].append(meanFLux)
-                summedMagnitudes[fil]["magErrs"].append(combError)
-                summedMagnitudes[fil]["lim5sig"].append(comb5SigLimit)
-                summedMagnitudes[fil]["n"].append(n)
-
                 allData.append(
                     {
                         "mjd": meanMjd,
@@ -507,6 +494,7 @@ class ATLAS_Forced_Phot(PhotCatalog):
                         "F": fil,
                         "n": n,
                         "mag5sig": comb5SigLimit,
+                        "tel": k[:2],  # first two characters of the key is the telescope number
                     }
                 )
         print("completed the ``stack_photometry`` method")
