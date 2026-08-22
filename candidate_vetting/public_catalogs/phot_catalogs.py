@@ -316,9 +316,9 @@ class ATLAS_Forced_Phot(PhotCatalog):
 
         atlas_phot = []
         for datum in data:
-            time = Time(datum['mjd'], format='mjd')
+            time = Time(datum["mjd"], format="mjd")
             utc = TimezoneInfo(utc_offset=0 * units.hour)
-            time.format = 'datetime'
+            time.format = "datetime"
             value = {
                 "timestamp": time.to_datetime(timezone=utc),
                 "bandpass": str(datum["F"]),
