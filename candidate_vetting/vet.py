@@ -171,6 +171,13 @@ def _save_host_galaxy_df(df, target):
         ],
         axis=1
     )
+
+    # fill the table if any columns are missing
+    for colname in ["z_neg_err", "z_pos_err", "lumdist_neg_err", "lumdist_pos_err"]:
+        if not colname in df.columns:
+            df[colname] = np.nan
+
+    # then, z_err and lumdist_err columns
     newdf["z_err"] = [
         [neg, pos]
         if neg != pos  # errors are asymmetric
@@ -219,6 +226,13 @@ def _save_associated_agn_df(df, target):
             "catalog",
         ]
     ]
+
+    # fill the table if any columns are missing
+    for colname in ["z_neg_err", "z_pos_err", "lumdist_neg_err", "lumdist_pos_err"]:
+        if not colname in df.columns:
+            df[colname] = np.nan
+
+    # then, z_err and lumdist_err columns
     newdf["z_err"] = [
         [neg, pos]
         if neg != pos  # errors are asymmetric
