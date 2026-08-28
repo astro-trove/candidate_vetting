@@ -153,6 +153,7 @@ def _save_host_galaxy_df(df, target):
     if TargetExtra.objects.filter(target_id=target.id, key="Host Galaxies").exists():
         TargetExtra.objects.filter(target_id=target.id, key="Host Galaxies").delete()
 
+    # fill the table if any columns are missing
     newdf = df.reindex(
         [
             "trove_uniq",
@@ -162,7 +163,11 @@ def _save_host_galaxy_df(df, target):
             "ra",
             "dec",
             "lumdist",
+            "lumdist_neg_err",
+            "lumdist_pos_err",
             "z",
+            "z_neg_err",
+            "z_pos_err",
             "z_type",
             "default_mag",
             "catalog",
@@ -171,16 +176,17 @@ def _save_host_galaxy_df(df, target):
         ],
         axis=1
     )
+
     newdf["z_err"] = [
         [neg, pos]
         if neg != pos  # errors are asymmetric
-        else neg  # errors are not assymetric
+        else neg  # errors are not asymmetric
         for neg, pos in zip(df.z_neg_err, df.z_pos_err)
     ]
     newdf["lumdist_err"] = [
         [neg, pos]
         if neg != pos  # errors are asymmetric
-        else neg  # errors are not assymetric
+        else neg  # errors are not asymmetric
         for neg, pos in zip(df.lumdist_neg_err, df.lumdist_pos_err)
     ]
     newdf = newdf.rename(columns=HOST_DF_COLMAP)
@@ -206,7 +212,9 @@ def _save_associated_agn_df(df, target):
         # "default_mag":"Mags",
         "catalog": "Source",
     }
-    newdf = df[
+
+    # fill the table if any columns are missing
+    newdf = df.reindex(
         [
             "name",
             # "pcc",
@@ -214,21 +222,27 @@ def _save_associated_agn_df(df, target):
             "ra",
             "dec",
             "lumdist",
+            "lumdist_neg_err",
+            "lumdist_pos_err",
             "z",
+            "z_neg_err",
+            "z_pos_err",
             # "default_mag",
             "catalog",
-        ]
-    ]
+        ],
+        axis=1
+    )
+
     newdf["z_err"] = [
         [neg, pos]
         if neg != pos  # errors are asymmetric
-        else neg  # errors are not assymetric
+        else neg  # errors are not asymmetric
         for neg, pos in zip(df.z_neg_err, df.z_pos_err)
     ]
     newdf["lumdist_err"] = [
         [neg, pos]
         if neg != pos  # errors are asymmetric
-        else neg  # errors are not assymetric
+        else neg  # errors are not asymmetric
         for neg, pos in zip(df.lumdist_neg_err, df.lumdist_pos_err)
     ]
     newdf = newdf.rename(columns=col_map)
