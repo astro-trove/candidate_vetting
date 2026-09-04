@@ -8,7 +8,6 @@ import lxml
 import os
 import glob
 import requests
-import time
 import json
 import logging
 import re

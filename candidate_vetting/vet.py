@@ -17,13 +17,6 @@ from django.conf import settings
 from trove_mpc import Transient
 from tom_targets.models import Target, TargetExtra
 from tom_nonlocalizedevents.models import NonLocalizedEvent
-
-# from tom_nonlocalizedevents.healpix_utils import (
-#     sa_engine,
-#     SaSkymapTile,
-#     uniq_to_bigintrange,
-#     update_all_credible_region_percents_for_candidates
-# )
 from tom_dataproducts.models import PhotometryReducedDatum
 
 from astropy.coordinates import angular_separation

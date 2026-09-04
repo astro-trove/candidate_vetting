@@ -4,19 +4,14 @@ Some useful variables that will be used throughout this entire directory
 
 import numpy as np
 
-import warnings
-
 from django.db.models import (
     Func,
     BooleanField,
     FloatField,
-    DecimalField,
     ExpressionWrapper,
 )
 from django.db.models import F, Value
 from django.db.models.functions import Pi, Exp, Power
-
-from tom_dataproducts.models import PhotometryReducedDatum
 
 RADIUS_ARCSEC = 2.0
 
