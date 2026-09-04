@@ -337,7 +337,7 @@ class ATLAS_Forced_Phot(PhotCatalog):
 
     def _add_phot(self, target, data):
         reduced_datums = [PhotometryReducedDatum(target=target, **value) for value in data]
-        new_reduced_datums = PhotometryReducedDatum.objects.bulk_create(atlas_phot, ignore_conflicts=True)
+        new_reduced_datums = PhotometryReducedDatum.objects.bulk_create(reduced_datums, ignore_conflicts=True)
         if new_reduced_datums:
             logger.info(f"Added {len(new_reduced_datums):d} photometry points from ATLAS forced photometry")
 
