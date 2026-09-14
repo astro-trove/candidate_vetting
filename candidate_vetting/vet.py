@@ -396,8 +396,7 @@ def agn_association_2d(
     This searches the AGN catalogs for a match for this target. If there are no
     catalog matches, fall back to a WISE mid-IR color selection of AGN (Stern+12 and
     Assef+13) on AllWISE sources within the radius. WISE-selected rows also carry
-    the w1, w2, w1_w2, w1_snr, offset and agn_criterion columns (see
-    `wise_agn_color_association`).
+    the w1, w2, w1_w2, w1_snr and offset columns (see `wise_agn_color_association`).
     """
 
     target = Target.objects.get(id=target_id)
@@ -464,33 +463,6 @@ def agn_association_2d(
     return ret_df
 
 
-def wise_agn_color_selection(w1, w2, w1_snr):
-    """
-    WISE mid-IR color selection of AGN, using the Stern+12 cut for W2 <= 15.05 and the
-    Assef+13 90% reliability criterion (their eq. 3) for 15.05 < W2 < 17.11
-
-    RETURNS
-    -------
-    The criterion each source passes ("Stern+12" or "Assef+13 R90"), or None if the
-    source is not selected as an AGN : array of objects
-    """
-    w1, w2, w1_snr = (np.asarray(x, dtype=float) for x in (w1, w2, w1_snr))
-    color = w1 - w2
-    detected = w1_snr > WISE_W1_SNR_MIN  # NaNs compare False, so undetected sources fail
-
-    stern = detected & (w2 <= STERN12_W2_MAX) & (color > STERN12_W1W2_MIN)
-
-    alpha, beta, gamma = ASSEF13_R90
-    assef = (
-        detected
-        & (w2 > STERN12_W2_MAX)
-        & (w2 < ASSEF13_W2_MAX)
-        & (color > alpha * np.exp(beta * (w2 - gamma) ** 2))
-    )
-
-    return np.where(stern, "Stern+12", np.where(assef, "Assef+13 R90", None))
-
-
 def wise_agn_color_association(
         ra: float,
         dec: float,
@@ -498,13 +470,9 @@ def wise_agn_color_association(
         _verbose: bool = False,
 ):
     """
-    Find AllWISE sources within radius of (ra, dec) with AGN-like mid-IR colors
-
-    RETURNS
-    -------
-    Standardized dataframe of the selected sources (empty if none), with the extra
-    columns w1, w2, w1_w2 (Vega mags), w1_snr, offset (arcsec) and agn_criterion
-    ("Stern+12" or "Assef+13 R90")
+    Find AllWISE sources within radius of (ra, dec) with AGN-like mid-IR colors, i.e.
+    that pass either the Stern+12 cut (W2 <= 15.05) or the Assef+13 90% reliability
+    criterion (their eq. 3, 15.05 < W2 < 17.11)
     """
     cat = AllWise()
     catname = str(cat)
@@ -524,8 +492,19 @@ def wise_agn_color_association(
 
     df = pd.DataFrame.from_records(rows, columns=cols)
 
-    criteria = pd.Series(wise_agn_color_selection(df.w1mpro, df.w2mpro, df.w1snr), index=df.index)
-    df = df[criteria.notna()]
+    w1 = df.w1mpro.astype(float)
+    w2 = df.w2mpro.astype(float)
+    color = w1 - w2
+    detected = df.w1snr.astype(float) > WISE_W1_SNR_MIN  # NaNs compare False
+
+    stern = (w2 <= STERN12_W2_MAX) & (color > STERN12_W1W2_MIN)
+    alpha, beta, gamma = ASSEF13_R90
+    assef = (
+        (w2 > STERN12_W2_MAX)
+        & (w2 < ASSEF13_W2_MAX)
+        & (color > alpha * np.exp(beta * (w2 - gamma) ** 2))
+    )
+    df = df[detected & (stern | assef)]  # either criterion counts as an AGN
     if _verbose:
         logger.info(f"{len(df)} {catname} matches pass the WISE AGN color selection")
     if len(df) == 0:
@@ -538,7 +517,6 @@ def wise_agn_color_association(
             "w2": df.w2mpro,
             "w1_w2": df.w1mpro - df.w2mpro,
             "w1_snr": df.w1snr,
-            "agn_criterion": criteria.loc[df.index],
         }
     )
 
@@ -548,8 +526,7 @@ def wise_agn_color_association(
     df["offset"] = 3600 * df.ang_dist  # arcsec
     df = df.join(wise_phot)
 
-    # record which color criterion selected this source
-    df["catalog"] = cat.__class__.__name__ + " (" + df.agn_criterion + ")"
+    df["catalog"] = cat.__class__.__name__
     return df
 
 # --- EVCC (Extended Virgo Cluster Catalog) geometric association -----------
