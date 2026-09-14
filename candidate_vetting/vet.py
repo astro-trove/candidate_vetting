@@ -33,6 +33,7 @@ from candidate_vetting.models import EvccQ3C
 from candidate_vetting.public_catalogs.util import cone_search_q3c
 
 from candidate_vetting.public_catalogs.static_catalogs import (
+    AllWise,
     # DesiSpec,
     Cosmicflows4,
     GladePlus,
@@ -87,6 +88,16 @@ HOST_DF_COLMAP_INVERSE = {v: k for k, v in HOST_DF_COLMAP.items()}
 HOST_ASSOC_RADIUS = 5 * 60  # 5 arcmin = 300 arcsec, as used in Franz+25 and Vieira+26
 PS_ASSOC_RADIUS = 2  # 2 arcsec, as used in Franz+25 and Vieira+26
 AGN_ASSOC_RADIUS = 2  # 2 arcsec, as used in Franz+25 and Vieira+26
+
+# WISE mid-IR AGN color selection (Vega mags), used when no AGN catalog match is found
+# Stern+12: W1 - W2 > 0.8 for W2 <= 15.05
+STERN12_W1W2_MIN = 0.8
+STERN12_W2_MAX = 15.05
+# Assef+13 eq. 3: W1 - W2 > alpha * exp(beta * (W2 - gamma)^2) for W2 < 17.11,
+# using the 90% reliability parameters
+ASSEF13_R90 = (0.662, 0.232, 13.97)  # (alpha, beta, gamma)
+ASSEF13_W2_MAX = 17.11
+WISE_W1_SNR_MIN = 3  # W1 S/N > 3 limit imposed in Assef+13
 
 # After we order the dataframe by the Pcc score, remove any host matches with a greater
 # Pcc score than this
@@ -235,14 +246,14 @@ def _save_associated_agn_df(df, target):
 
     newdf["z_err"] = [
         [neg, pos]
-        if neg != pos  # errors are asymmetric
-        else neg  # errors are not asymmetric
+        if neg != pos and not (pd.isna(neg) and pd.isna(pos))  # errors are asymmetric
+        else neg  # errors are not asymmetric (or missing, e.g. WISE color selected AGN)
         for neg, pos in zip(df.z_neg_err, df.z_pos_err)
     ]
     newdf["lumdist_err"] = [
         [neg, pos]
-        if neg != pos  # errors are asymmetric
-        else neg  # errors are not asymmetric
+        if neg != pos and not (pd.isna(neg) and pd.isna(pos))  # errors are asymmetric
+        else neg  # errors are not asymmetric (or missing, e.g. WISE color selected AGN)
         for neg, pos in zip(df.lumdist_neg_err, df.lumdist_pos_err)
     ]
     newdf = newdf.rename(columns=col_map)
@@ -382,7 +393,11 @@ def agn_association_2d(
         _verbose: bool = False,
 ):
     """
-    This searches the AGN catalogs for a match for this target
+    This searches the AGN catalogs for a match for this target. If there are no
+    catalog matches, fall back to a WISE mid-IR color selection of AGN (Stern+12 and
+    Assef+13) on AllWISE sources within the radius. WISE-selected rows also carry
+    the w1, w2, w1_w2, w1_snr, offset and agn_criterion columns (see
+    `wise_agn_color_association`).
     """
 
     target = Target.objects.get(id=target_id)
@@ -427,6 +442,12 @@ def agn_association_2d(
         df["catalog"] = cat.__class__.__name__
         res.append(df)
 
+    # if no AGN catalog matches, check if a WISE source has AGN-like mid-IR colors
+    if len(res) == 0:
+        wise_df = wise_agn_color_association(ra, dec, radius=radius, _verbose=_verbose)
+        if len(wise_df) > 0:
+            res.append(wise_df)
+
     if len(res) > 0:  # when no matches, nothing to concatenate
         df = pd.concat(res).reset_index(drop=True)
     else:  # return an empty dataframe
@@ -441,6 +462,95 @@ def agn_association_2d(
     # save the host galaxy dataframe to the TargetExtra "Associated AGN" keyword
     _save_associated_agn_df(ret_df, target)
     return ret_df
+
+
+def wise_agn_color_selection(w1, w2, w1_snr):
+    """
+    WISE mid-IR color selection of AGN, using the Stern+12 cut for W2 <= 15.05 and the
+    Assef+13 90% reliability criterion (their eq. 3) for 15.05 < W2 < 17.11
+
+    RETURNS
+    -------
+    The criterion each source passes ("Stern+12" or "Assef+13 R90"), or None if the
+    source is not selected as an AGN : array of objects
+    """
+    w1, w2, w1_snr = (np.asarray(x, dtype=float) for x in (w1, w2, w1_snr))
+    color = w1 - w2
+    detected = w1_snr > WISE_W1_SNR_MIN  # NaNs compare False, so undetected sources fail
+
+    stern = detected & (w2 <= STERN12_W2_MAX) & (color > STERN12_W1W2_MIN)
+
+    alpha, beta, gamma = ASSEF13_R90
+    assef = (
+        detected
+        & (w2 > STERN12_W2_MAX)
+        & (w2 < ASSEF13_W2_MAX)
+        & (color > alpha * np.exp(beta * (w2 - gamma) ** 2))
+    )
+
+    return np.where(stern, "Stern+12", np.where(assef, "Assef+13 R90", None))
+
+
+def wise_agn_color_association(
+        ra: float,
+        dec: float,
+        radius: float = AGN_ASSOC_RADIUS,
+        _verbose: bool = False,
+):
+    """
+    Find AllWISE sources within radius of (ra, dec) with AGN-like mid-IR colors
+
+    RETURNS
+    -------
+    Standardized dataframe of the selected sources (empty if none), with the extra
+    columns w1, w2, w1_w2 (Vega mags), w1_snr, offset (arcsec) and agn_criterion
+    ("Stern+12" or "Assef+13 R90")
+    """
+    cat = AllWise()
+    catname = str(cat)
+    if _verbose:
+        logger.info(f"Querying {cat} for WISE color selected AGN...")
+    query_set = cat.query(ra, dec, radius)
+
+    # evaluate the cone search once, AllWISE is large enough that each extra
+    # query (e.g. a .count()) is noticeably slow
+    cols = list(cat.ogcols) + ["ang_dist"]
+    rows = list(query_set.values_list(*cols))
+    if _verbose:
+        logger.info(f"Found {len(rows)} matches in {catname}")
+
+    if len(rows) == 0:
+        return pd.DataFrame({})
+
+    df = pd.DataFrame.from_records(rows, columns=cols)
+
+    criteria = pd.Series(wise_agn_color_selection(df.w1mpro, df.w2mpro, df.w1snr), index=df.index)
+    df = df[criteria.notna()]
+    if _verbose:
+        logger.info(f"{len(df)} {catname} matches pass the WISE AGN color selection")
+    if len(df) == 0:
+        return pd.DataFrame({})
+
+    # keep the WISE photometry, the standardization below drops non-standard columns
+    wise_phot = pd.DataFrame(
+        {
+            "w1": df.w1mpro,
+            "w2": df.w2mpro,
+            "w1_w2": df.w1mpro - df.w2mpro,
+            "w1_snr": df.w1snr,
+            "agn_criterion": criteria.loc[df.index],
+        }
+    )
+
+    df = cat.to_standardized_catalog(df)
+    df = df.dropna(subset=["default_mag", "ra", "dec"])
+    df["trove_uniq"] = df["trove_uniq"].astype(int)
+    df["offset"] = 3600 * df.ang_dist  # arcsec
+    df = df.join(wise_phot)
+
+    # record which color criterion selected this source
+    df["catalog"] = cat.__class__.__name__ + " (" + df.agn_criterion + ")"
+    return df
 
 # --- EVCC (Extended Virgo Cluster Catalog) geometric association -----------
 # Constants derived once from the static evcc_q3c table (1589 rows). They let

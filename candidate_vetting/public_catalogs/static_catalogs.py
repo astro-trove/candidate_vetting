@@ -19,6 +19,7 @@ from .util import (
     citation
 )
 from ..models import (
+    AllwiseQ3C,
     AsassnQ3C,
     Cosmicflows4Q3C,
     DelveDr3Q3C,
@@ -49,6 +50,44 @@ cosmo = settings.COSMO
 class _Log10(Func):
     function = "LOG10"
     template = "%(function)s(%(expressions)s)"
+
+
+@citation(
+    doi=["10.1088/0004-6256/140/6/1868"],
+    ads_bibcode=["2010AJ....140.1868W", "2013wise.rept....1C"],
+    data_url="https://irsa.ipac.caltech.edu/Missions/wise.html",
+)
+class AllWise(StaticCatalog):
+    """
+    AllWISE Source Catalog of mid-IR (W1, W2, W3, W4) photometry.
+    """
+
+    name = "AllWISE"
+    catalog_model = AllwiseQ3C
+    colmap = {
+        "cntr": "trove_uniq",
+        "designation": "name",
+        "ra": "ra",
+        "dec": "dec",
+        "w2mpro": "default_mag",  # Vega mag
+    }
+    mag_colname = "w2mpro"
+
+    def __init__(self):
+        super().__init__()
+        self.ogcols += ["w1mpro", "w1snr"]  # needed for the AGN color selection
+
+    def to_standardized_catalog(self, df):
+        df["filter"] = "W2"
+        df = self._standardize_df(df)
+        for col in [
+            "z", "z_err", "z_neg_err", "z_pos_err",
+            "lumdist", "lumdist_err", "lumdist_neg_err", "lumdist_pos_err",
+        ]:
+            df[col] = np.nan
+        df["z_type"] = ""
+        df["submitter"] = ""
+        return df
 
 
 @citation(
