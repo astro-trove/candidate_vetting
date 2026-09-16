@@ -53,13 +53,26 @@ class _Log10(Func):
 
 
 @citation(
-    doi=["10.1088/0004-6256/140/6/1868"],
-    ads_bibcode=["2010AJ....140.1868W", "2013wise.rept....1C"],
+    doi=[
+        "10.1088/0004-6256/140/6/1868",  # WISE mission
+        "10.1088/0004-637X/753/1/30",  # Stern+12 W1-W2 >= 0.8 AGN color cut
+        "10.1088/0004-637X/772/1/26",  # Assef+13 reliability-based color-magnitude cut
+    ],
+    ads_bibcode=[
+        "2010AJ....140.1868W",
+        "2013wise.rept....1C",  # AllWISE explanatory supplement
+        "2012ApJ...753...30S",
+        "2013ApJ...772...26A",
+    ],
     data_url="https://irsa.ipac.caltech.edu/Missions/wise.html",
 )
 class AllWise(StaticCatalog):
     """
     AllWISE Source Catalog of mid-IR (W1, W2, W3, W4) photometry.
+
+    The mid-IR AGN color selection applied to this catalog in
+    `candidate_vetting.vet.wise_agn_color_association` uses the Stern+12 and
+    Assef+13 criteria, hence the extra citations above.
     """
 
     name = "AllWISE"
@@ -76,9 +89,16 @@ class AllWise(StaticCatalog):
     def __init__(self):
         super().__init__()
         self.ogcols += ["w1mpro", "w1snr"]  # needed for the AGN color selection
+        # the mid-IR photometry the AGN color selection is based on is worth keeping
+        # in the standardized dataframe, so add it to the standard column names
+        self.colnames |= {"w1", "w2", "w1_w2", "w1_snr"}
 
     def to_standardized_catalog(self, df):
         df["filter"] = "W2"
+        df["w1"] = df.w1mpro.astype(float)  # Vega mags
+        df["w2"] = df.w2mpro.astype(float)
+        df["w1_w2"] = df.w1 - df.w2
+        df["w1_snr"] = df.w1snr.astype(float)
         df = self._standardize_df(df)
         for col in [
             "z", "z_err", "z_neg_err", "z_pos_err",

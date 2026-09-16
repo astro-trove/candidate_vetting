@@ -510,21 +510,10 @@ def wise_agn_color_association(
     if len(df) == 0:
         return pd.DataFrame({})
 
-    # keep the WISE photometry, the standardization below drops non-standard columns
-    wise_phot = pd.DataFrame(
-        {
-            "w1": df.w1mpro,
-            "w2": df.w2mpro,
-            "w1_w2": df.w1mpro - df.w2mpro,
-            "w1_snr": df.w1snr,
-        }
-    )
-
     df = cat.to_standardized_catalog(df)
     df = df.dropna(subset=["default_mag", "ra", "dec"])
     df["trove_uniq"] = df["trove_uniq"].astype(int)
     df["offset"] = 3600 * df.ang_dist  # arcsec
-    df = df.join(wise_phot)
 
     df["catalog"] = cat.__class__.__name__
     return df
