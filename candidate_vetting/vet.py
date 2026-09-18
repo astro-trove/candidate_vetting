@@ -33,27 +33,28 @@ from candidate_vetting.models import EvccQ3C
 from candidate_vetting.public_catalogs.util import cone_search_q3c
 
 from candidate_vetting.public_catalogs.static_catalogs import (
-    # DesiSpec,
     Cosmicflows4,
+    DelveDr3Galaxy,
+    # DesiSpec,
+    DesiDr1Galaxy,
+    ExtendedVirgoClusterCatalog,
     GladePlus,
     Gwgc,
     # Hecate1,
     Hecate2,
     LsDr9North,
     LsDr10South,
+    NedLvs,
     Ps1Galaxy,
     Sdss12PhotozGalaxy,
     AsassnVariableStar,
     Gaiadr3Variable,
-    ZtfVarStar,
-    Ps1PointSource,
-    Milliquas,
-    RomaBzcat,
-    NedLvs,
+    Ps1Star,
     # TwoMass,
-    DesiDr1Galaxy,
-    ExtendedVirgoClusterCatalog,
-    DelveDr3Galaxy,
+    ZtfVarStar,
+    Milliquas,
+    Ps1Qso,
+    RomaBzcat,
 )
 
 if minversion(np, "2.0.0"):
@@ -351,12 +352,9 @@ def point_source_association(target_id: int, radius: float = 2):
     point_source_catalogs = [
         ("source_id", AsassnVariableStar),
         ("source_id", Gaiadr3Variable),
-        ("objid", Ps1PointSource),
-        # ZtfVarStar,
-        # this is the 2MASS point source catalog
-        # I'm leaving it commented out because we need to test it a bit more before
-        # using it!
-        # TwoMass
+        ("objid", Ps1Star),
+        ("sourceid", ZtfVarStar),
+        # 2MASS point sources?
     ]
 
     matches = {}
@@ -390,6 +388,7 @@ def agn_association_2d(
 
     agn_catalogs = [Milliquas,
                     RomaBzcat,
+                    Ps1Qso,
     ]
 
     # agn_matches = None
