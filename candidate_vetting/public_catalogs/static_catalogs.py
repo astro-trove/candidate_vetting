@@ -55,24 +55,18 @@ class _Log10(Func):
 @citation(
     doi=[
         "10.1088/0004-6256/140/6/1868",  # WISE mission
-        "10.1088/0004-637X/753/1/30",  # Stern+12 W1-W2 >= 0.8 AGN color cut
-        "10.1088/0004-637X/772/1/26",  # Assef+13 reliability-based color-magnitude cut
+        "10.3847/1538-4365/aaa00a",  # Assef+18 R90 AGN color-magnitude cut
     ],
     ads_bibcode=[
         "2010AJ....140.1868W",
         "2013wise.rept....1C",  # AllWISE explanatory supplement
-        "2012ApJ...753...30S",
-        "2013ApJ...772...26A",
+        "2018ApJS..234...23A",
     ],
     data_url="https://irsa.ipac.caltech.edu/Missions/wise.html",
 )
 class AllWise(StaticCatalog):
     """
     AllWISE Source Catalog of mid-IR (W1, W2, W3, W4) photometry.
-
-    The mid-IR AGN color selection applied to this catalog in
-    `candidate_vetting.vet.wise_agn_color_association` uses the Stern+12 and
-    Assef+13 criteria, hence the extra citations above.
     """
 
     name = "AllWISE"
@@ -88,7 +82,7 @@ class AllWise(StaticCatalog):
 
     def __init__(self):
         super().__init__()
-        self.ogcols += ["w1mpro", "w1snr"]  # needed for the AGN color selection
+        self.ogcols += ["w1mpro", "w1snr", "cc_flags"]  # needed for the AGN color selection
         # the mid-IR photometry the AGN color selection is based on is worth keeping
         # in the standardized dataframe, so add it to the standard column names
         self.colnames |= {"w1", "w2", "w1_w2", "w1_snr"}
