@@ -1822,3 +1822,29 @@ class EvccQ3C(models.Model):
     class Meta:
         managed = False
         db_table = "evcc_q3c"
+
+
+class AllwiseQ3C(models.Model):
+    cntr = models.BigIntegerField(primary_key=True)
+    designation = models.CharField(max_length=20, blank=True, null=True)
+    ra = models.FloatField(blank=True, null=True)
+    dec = models.FloatField(blank=True, null=True)
+    w1mpro = models.FloatField(blank=True, null=True)
+    w1sigmpro = models.FloatField(blank=True, null=True)
+    w1snr = models.FloatField(blank=True, null=True)
+    w2mpro = models.FloatField(blank=True, null=True)
+    w2sigmpro = models.FloatField(blank=True, null=True)
+    w2snr = models.FloatField(blank=True, null=True)
+    w3mpro = models.FloatField(blank=True, null=True)
+    w3sigmpro = models.FloatField(blank=True, null=True)
+    w3snr = models.FloatField(blank=True, null=True)
+    w4mpro = models.FloatField(blank=True, null=True)
+    w4sigmpro = models.FloatField(blank=True, null=True)
+    w4snr = models.FloatField(blank=True, null=True)
+    cc_flags = models.CharField(max_length=4, blank=True, null=True)
+    ext_flg = models.IntegerField(blank=True, null=True)
+    ph_qual = models.CharField(max_length=4, blank=True, null=True)
+
+    class Meta:
+        managed = False
+        db_table = "allwise_q3c"
