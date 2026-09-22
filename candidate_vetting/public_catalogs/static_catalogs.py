@@ -82,7 +82,7 @@ class AllWise(StaticCatalog):
 
     def __init__(self):
         super().__init__()
-        self.ogcols += ["w1mpro", "w1snr", "cc_flags"]  # needed for the AGN color selection
+        self.ogcols += ["w1mpro", "w1snr", "w2snr", "ext_flg", "cc_flags"]  # needed for the AGN color selection
         # the mid-IR photometry the AGN color selection is based on is worth keeping
         # in the standardized dataframe, so add it to the standard column names
         self.colnames |= {"w1", "w2", "w1_w2", "w1_snr"}

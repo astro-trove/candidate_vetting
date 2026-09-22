@@ -92,6 +92,9 @@ AGN_ASSOC_RADIUS = 2  # 2 arcsec, as used in Franz+25 and Vieira+26
 
 # Assef+18 eq. 4, 90% reliability (R90) parameters calibrated on AllWISE photometry
 ASSEF18_R90 = (0.650, 0.153, 13.86)  # (alpha, beta, gamma)
+# Assef+18 sec. 3 catalog cuts: saturation limits, W2 S/N, point sources
+ASSEF18_W1_MIN, ASSEF18_W2_MIN = 8, 7
+ASSEF18_W2_SNR_MIN = 5
 
 # After we order the dataframe by the Pcc score, remove any host matches with a greater
 # Pcc score than this
@@ -484,7 +487,14 @@ def wise_agn_color_association(
     alpha, beta, gamma = ASSEF18_R90
     limit = np.where(w2 > gamma, alpha * np.exp(beta * (w2 - gamma) ** 2), alpha)
     clean = df.cc_flags.fillna("").str[:2] == "00"  # no artifacts in W1 or W2
-    df = df[(color > limit) & clean]  # NaN magnitudes compare False
+    # These are all of the checks that Assef+18 uses to justify the 90% reliability
+    quality = (
+        (w1 > ASSEF18_W1_MIN) & (w2 > ASSEF18_W2_MIN)
+        & (df.w2snr.astype(float) > ASSEF18_W2_SNR_MIN)
+        & (df.ext_flg.astype(float) == 0)
+        & clean
+    )
+    df = df[(color > limit) & quality]  # NaNs compare False
     if _verbose:
         logger.info(f"{len(df)} {catname} matches pass the WISE AGN color selection")
     if len(df) == 0:
