@@ -5,9 +5,8 @@ Define the static catalogs for querying
 from astropy import units as u
 from astropy.cosmology import z_at_value
 import pandas as pd
-import numpy as np
 
-from django.db.models import F, Q, Func, Value, IntegerField, Case, When, CharField
+from django.db.models import F, Func, Value, IntegerField, Case, When, CharField
 from django.db.models.functions import Cast, Concat
 from django.conf import settings
 

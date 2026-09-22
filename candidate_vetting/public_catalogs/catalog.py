@@ -9,7 +9,7 @@ from django.db import models
 
 from .util import RADIUS_ARCSEC, cone_search_q3c, pcc_q3c
 
-from django.db.models import F, CharField, Case, When, Value, Q, ExpressionWrapper
+from django.db.models import F, CharField, Case, When, Value
 from django.db.models.functions import Coalesce, Cast
 
 # database connection constants

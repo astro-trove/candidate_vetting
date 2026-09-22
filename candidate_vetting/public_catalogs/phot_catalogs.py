@@ -8,7 +8,6 @@ import lxml
 import os
 import glob
 import requests
-import time
 import json
 import logging
 import re
@@ -37,9 +36,10 @@ from django.db.models.functions import Sqrt
 from django.contrib import messages
 
 from .catalog import PhotCatalog
-from .util import _QUERY_METHOD_DOCSTRING, RADIUS_ARCSEC, create_phot
+from .util import _QUERY_METHOD_DOCSTRING, RADIUS_ARCSEC
 
 from tom_targets.models import Target
+from tom_dataproducts.models import PhotometryReducedDatum
 
 logger = logging.getLogger(__file__)
 
@@ -123,30 +123,35 @@ class TNS_Phot(PhotCatalog):
             logger.info(f"Updated coordinates to {target.ra:.6f}, {target.dec:.6f} based on TNS")
 
         # now we can ingest any new photometry
-        n_new_phot = 0
+        tns_phot = []
         for candidate in tns_reply.get("photometry", []):
             jd = Time(candidate["jd"], format="jd", scale="utc")
-            value = {"filter": candidate["filters"]["name"]}
+            value = {
+                "source_name": "TNS",
+                "telescope": candidate["telescope"]["name"],
+                "bandpass": candidate["filters"]["name"],
+            }
             if candidate["flux"]:  # detection
-                value["magnitude"] = float(candidate["flux"])
+                value["brightness"] = float(candidate["flux"])
             elif candidate["limflux"]:  # nondetection
                 value["limit"] = float(candidate["limflux"])
             else:  # something else, maybe an FRB; don't ingest it
                 continue
             if candidate["fluxerr"]:  # not empty or zero
-                value["error"] = float(candidate["fluxerr"])
-            created = create_phot(
-                target=target,
-                time=jd.to_datetime(timezone=TimezoneInfo()),
-                fluxdict=value,
-                source=candidate["telescope"]["name"] + " (TNS)",
+                value["brightness_error"] = float(candidate["fluxerr"])
+            tns_phot.append(
+                PhotometryReducedDatum(
+                    target=target,
+                    timestamp=jd.to_datetime(timezone=TimezoneInfo()),
+                    **value
+                )
             )
 
-            n_new_phot += created
-        if n_new_phot:
-            logger.info(f"Added {n_new_phot:d} photometry points from the TNS")
+        new_phot = PhotometryReducedDatum.objects.bulk_create(tns_phot, ignore_conflicts=True)
+        if new_phot:
+            logger.info(f"Added {len(new_phot):d} photometry points from the TNS")
 
-        return n_new_phot
+        return len(new_phot)
 
     def _post_to_tns(self, get_url, requests_kwargs, timelimit):
 
@@ -301,20 +306,23 @@ class ATLAS_Forced_Phot(PhotCatalog):
             # s.delete(task_url, headers=headers).json()
 
         ATLASphot = self._ATLAS_stack(textdata)
+        atlas_mags = self._to_magnitudes(ATLASphot)
 
         # add the photometry to the target
-        return self._add_phot(target, ATLASphot)
+        return self._add_phot(target, atlas_mags)
 
-    def _add_phot(self, target, data, signal_to_noise_cutoff=3.0):
+    def _to_magnitudes(self, data, signal_to_noise_cutoff=3.0):
 
-        n_new_phot = 0
+        atlas_phot = []
         for datum in data:
             time = Time(datum["mjd"], format="mjd")
             utc = TimezoneInfo(utc_offset=0 * units.hour)
             time.format = "datetime"
             value = {
-                "filter": str(datum["F"]),
+                "timestamp": time.to_datetime(timezone=utc),
+                "bandpass": str(datum["F"]),
                 "telescope": f"ATLAS-{datum['tel']}",
+                "source_name": "ATLAS FP",
             }
             # If the signal is in the noise, calculate the non-detection limit from the reported flux uncertainty.
             # see https://fallingstar-data.com/forcedphot/resultdesc/
@@ -322,21 +330,18 @@ class ATLAS_Forced_Phot(PhotCatalog):
             if signal_to_noise <= signal_to_noise_cutoff:
                 value["limit"] = 23.9 - 2.5 * np.log10(signal_to_noise_cutoff * datum["duJy"])
             else:
-                value["magnitude"] = 23.9 - 2.5 * np.log10(datum["uJy"])
-                value["error"] = 2.5 / np.log(10.0) / signal_to_noise
+                value["brightness"] = 23.9 - 2.5 * np.log10(datum["uJy"])
+                value["brightness_error"] = 2.5 / np.log(10.0) / signal_to_noise
+            atlas_phot.append(value)
+        return atlas_phot
 
-            created = create_phot(
-                target=target,
-                time=time.to_datetime(timezone=utc),
-                fluxdict=value,
-                source="ATLAS",
-            )
+    def _add_phot(self, target, data):
+        reduced_datums = [PhotometryReducedDatum(target=target, **value) for value in data]
+        new_reduced_datums = PhotometryReducedDatum.objects.bulk_create(reduced_datums, ignore_conflicts=True)
+        if new_reduced_datums:
+            logger.info(f"Added {len(new_reduced_datums):d} photometry points from ATLAS forced photometry")
 
-            n_new_phot += created
-        if n_new_phot:
-            logger.info(f"Added {n_new_phot:d} photometry points from ATLAS forced photometry")
-
-        return bool(n_new_phot)
+        return bool(new_reduced_datums)
 
     def _ATLAS_stack(self, filecontent):
         """
@@ -654,11 +659,11 @@ class ZTF_Forced_Phot(PhotCatalog):
 
         snr_thresh and snr_limit are directly from sec 6.3 of the ZTF FP docs
         """
-
+        ztf_phot = []
         for _, row in phot.iterrows():
             time = Time(row.jd, format="jd", scale="utc")
 
-            value = {"filter": row["filter"].replace("ZTF_", ""), "telescope": "ZTF"}
+            value = {"bandpass": row["filter"].replace("ZTF_", ""), "telescope": "ZTF", "source_name": "ZTF FP"}
 
             flux = float(row.forcediffimflux)
             flux_err = float(row.forcediffimfluxunc)
@@ -667,18 +672,20 @@ class ZTF_Forced_Phot(PhotCatalog):
 
             if snr > snr_thresh:
                 # this should be considered a detection
-                value["magnitude"] = flux_zp - 2.5 * np.log10(flux)
-                value["error"] = 2.5 / np.log(10) / snr
+                value["brightness"] = flux_zp - 2.5 * np.log10(flux)
+                value["brightness_error"] = 2.5 / np.log(10) / snr
             else:
                 # this should be considered a limit
                 value["limit"] = flux_zp - 2.5 * np.log10(snr_limit * flux_err)
 
-            created = create_phot(
-                target=targ,
-                time=time.to_datetime(timezone=TimezoneInfo()),
-                fluxdict=value,
-                source="ZTF FP",
+            ztf_phot.append(
+                PhotometryReducedDatum(
+                    target=targ,
+                    timestamp=time.to_datetime(timezone=TimezoneInfo()),
+                    **value
+                )
             )
+        PhotometryReducedDatum.objects.bulk_create(ztf_phot, ignore_conflicts=True)
 
     def _query_ztf_email(self, log_file_name, source_name=None):
         """This checks the trove email address for new emails from ZTF withd dataproducts"""
