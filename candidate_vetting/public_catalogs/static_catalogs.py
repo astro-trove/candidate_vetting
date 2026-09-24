@@ -41,6 +41,8 @@ from ..models import (
     TwomassQ3C,
     ZtfVarstarQ3C,
     EvccQ3C,
+    Lsdr10DoradoQ3C,
+    Lsdr10FornaxQ3C,
 )
 
 
@@ -427,7 +429,106 @@ class ExtendedVirgoClusterCatalog(StaticCatalog):
 
         # then we can do the normal coalesce
         return super(ExtendedVirgoClusterCatalog, self)._annotate_with_coalesce(queryset)
-    
+
+
+@citation(
+    doi=[
+        "10.1093/mnras/stae840",              # Smith Castelli et al. 2024 (Fornax literature compilation)
+        "10.3847/1538-3881/ab089d",           # Dey et al. 2019 (DESI Legacy Surveys)
+    ],
+    ads_bibcode=[
+        "2024MNRAS.530.3787S",
+        "2019AJ....157..168D",
+    ],
+    version="DR10",
+    data_url="https://www.legacysurvey.org/dr10/catalogs/",
+)
+class FornaxClusterCatalog(StaticCatalog):
+    """
+    Fornax cluster galaxies out to 5 Rvir (1,000 galaxies; 235 with radial
+    velocities), drawn from the literature compilation of Smith Castelli et al.
+    (2024) and cross-matched with DESI Legacy Survey DR10. Every galaxy is
+    assigned the cluster distance, (m-M) = 31.51 mag (Blakeslee et al. 2009).
+    """
+
+    name = "Fornax"
+    catalog_model = Lsdr10FornaxQ3C
+    ra_colname = "ra"
+    dec_colname = "dec"
+    mag_colname = "dered_mag_r"
+    colmap = {"ls_id": "trove_uniq", "name": "name", "ra": "ra", "dec": "dec", "dered_mag_r": "default_mag"}
+    extra_cols = ["shape_r", "sersic", "shape_e1", "shape_e2", "type", "radvel"]
+
+    def __init__(self):
+        super().__init__()
+        self.ogcols += self.extra_cols
+        self.colnames |= set(self.extra_cols)
+
+    def to_standardized_catalog(self, df):
+        df["filter"] = "r"
+        df = self._standardize_df(df)
+        df["lumdist"] = 20.0
+        df["lumdist_neg_err"] = 1.4
+        df["lumdist_pos_err"] = 1.4
+        for col in ["z", "z_err", "z_neg_err", "z_pos_err"]:
+            df[col] = np.nan
+        df["z_type"] = ""
+        df["submitter"] = ""
+        return df
+
+
+@citation(
+    doi=[
+        "10.1051/0004-6361/202038996",        # Rampazzo et al. 2020 (Dorado I)
+        "10.1007/s12036-021-09690-x",         # Rampazzo et al. 2021 (Dorado II)
+        "10.1051/0004-6361/202243726",        # Rampazzo et al. 2022 (Dorado III)
+        "10.1051/0004-6361/202449441",        # Maccagni et al. 2024
+        "10.3847/1538-3881/ab089d",           # Dey et al. 2019 (DESI Legacy Surveys)
+    ],
+    ads_bibcode=[
+        "2020A%26A...643A.176R",
+        "2021JApA...42...31R",
+        "2022A%26A...664A.192R",
+        "2024A%26A...690A..69M",
+        "2019AJ....157..168D",
+    ],
+    version="DR10",
+    data_url="https://www.legacysurvey.org/dr10/catalogs/",
+)
+class DoradoClusterCatalog(StaticCatalog):
+    """
+    Dorado group galaxies within Rvir (34 galaxies, all with radial velocities),
+    assembled from Rampazzo et al. (2020, 2021, 2022) and Maccagni et al. (2024)
+    and cross-matched with DESI Legacy Survey DR10. Every galaxy is assigned the
+    group distance of 17.69 Mpc (Rampazzo et al. 2020).
+    """
+
+    name = "Dorado"
+    catalog_model = Lsdr10DoradoQ3C
+    ra_colname = "ra"
+    dec_colname = "dec"
+    mag_colname = "dered_mag_r"
+    colmap = {"ls_id": "trove_uniq", "name": "name", "ra": "ra", "dec": "dec", "dered_mag_r": "default_mag"}
+    extra_cols = ["shape_r", "sersic", "shape_e1", "shape_e2", "type", "radvel"]
+
+    def __init__(self):
+        super().__init__()
+        self.ogcols += self.extra_cols
+        self.colnames |= set(self.extra_cols)
+
+    def to_standardized_catalog(self, df):
+        df["filter"] = "r"
+        df = self._standardize_df(df)
+        df["lumdist"] = 17.69
+        df["lumdist_neg_err"] = 2.
+        df["lumdist_pos_err"] = 2.
+        for col in ["z", "z_err", "z_neg_err", "z_pos_err"]:
+            df[col] = np.nan
+        df["z_type"] = ""
+        df["submitter"] = ""
+        return df
+
+
 
 @citation()
 class FermiLat(StaticCatalog):
