@@ -39,6 +39,7 @@ from candidate_vetting.public_catalogs.static_catalogs import (
     DelveDr3Galaxy,
     # DesiSpec,
     DesiDr1Galaxy,
+    DesiDr1Quasar,
     ExtendedVirgoClusterCatalog,
     GladePlus,
     Gwgc,
@@ -57,6 +58,8 @@ from candidate_vetting.public_catalogs.static_catalogs import (
     Milliquas,
     Ps1Qso,
     RomaBzcat,
+    NedLvs,
+    # TwoMass,
 )
 
 if minversion(np, "2.0.0"):
@@ -91,15 +94,11 @@ HOST_ASSOC_RADIUS = 5 * 60  # 5 arcmin = 300 arcsec, as used in Franz+25 and Vie
 PS_ASSOC_RADIUS = 2  # 2 arcsec, as used in Franz+25 and Vieira+26
 AGN_ASSOC_RADIUS = 2  # 2 arcsec, as used in Franz+25 and Vieira+26
 
-# WISE mid-IR AGN color selection (Vega mags), used when no AGN catalog match is found
-# Stern+12: W1 - W2 > 0.8 for W2 <= 15.05
-STERN12_W1W2_MIN = 0.8
-STERN12_W2_MAX = 15.05
-# Assef+13 eq. 3: W1 - W2 > alpha * exp(beta * (W2 - gamma)^2) for W2 < 17.11,
-# using the 90% reliability parameters
-ASSEF13_R90 = (0.662, 0.232, 13.97)  # (alpha, beta, gamma)
-ASSEF13_W2_MAX = 17.11
-WISE_W1_SNR_MIN = 3  # W1 S/N > 3 limit imposed in Assef+13
+# Assef+18 eq. 4, 90% reliability (R90) parameters calibrated on AllWISE photometry
+ASSEF18_R90 = (0.650, 0.153, 13.86)  # (alpha, beta, gamma)
+# Assef+18 sec. 3 catalog cuts: saturation limits, W2 S/N, point sources
+ASSEF18_W1_MIN, ASSEF18_W2_MIN = 8, 7
+ASSEF18_W2_SNR_MIN = 5
 
 # After we order the dataframe by the Pcc score, remove any host matches with a greater
 # Pcc score than this
@@ -391,18 +390,12 @@ def agn_association_2d(
         radius: float = AGN_ASSOC_RADIUS,
         _verbose: bool = False,
 ):
-    """
-    This searches the AGN catalogs for a match for this target. If there are no
-    catalog matches, fall back to a WISE mid-IR color selection of AGN (Stern+12 and
-    Assef+13) on AllWISE sources within the radius. WISE-selected rows also carry
-    the w1, w2, w1_w2, w1_snr and offset columns (see `wise_agn_color_association`).
-    """
-
     target = Target.objects.get(id=target_id)
     ra, dec = target.ra, target.dec
 
     agn_catalogs = [Milliquas,
                     RomaBzcat,
+                    DesiDr1Quasar,
                     Ps1Qso,
     ]
 
@@ -470,9 +463,7 @@ def wise_agn_color_association(
         _verbose: bool = False,
 ):
     """
-    Find AllWISE sources within radius of (ra, dec) with AGN-like mid-IR colors, i.e.
-    that pass either the Stern+12 cut (W2 <= 15.05) or the Assef+13 90% reliability
-    criterion (their eq. 3, 15.05 < W2 < 17.11)
+    Find AllWISE sources within radius of (ra, dec) with AGN-like mid-IR colors
     """
     cat = AllWise()
     catname = str(cat)
@@ -495,16 +486,17 @@ def wise_agn_color_association(
     w1 = df.w1mpro.astype(float)
     w2 = df.w2mpro.astype(float)
     color = w1 - w2
-    detected = df.w1snr.astype(float) > WISE_W1_SNR_MIN  # NaNs compare False
-
-    stern = (w2 <= STERN12_W2_MAX) & (color > STERN12_W1W2_MIN)
-    alpha, beta, gamma = ASSEF13_R90
-    assef = (
-        (w2 > STERN12_W2_MAX)
-        & (w2 < ASSEF13_W2_MAX)
-        & (color > alpha * np.exp(beta * (w2 - gamma) ** 2))
+    alpha, beta, gamma = ASSEF18_R90
+    limit = np.where(w2 > gamma, alpha * np.exp(beta * (w2 - gamma) ** 2), alpha)
+    clean = df.cc_flags.fillna("").str[:2] == "00"  # no artifacts in W1 or W2
+    # These are all of the checks that Assef+18 uses to justify the 90% reliability
+    quality = (
+        (w1 > ASSEF18_W1_MIN) & (w2 > ASSEF18_W2_MIN)
+        & (df.w2snr.astype(float) > ASSEF18_W2_SNR_MIN)
+        & (df.ext_flg.astype(float) == 0)
+        & clean
     )
-    df = df[detected & (stern | assef)]  # either criterion counts as an AGN
+    df = df[(color > limit) & quality]  # NaNs compare False
     if _verbose:
         logger.info(f"{len(df)} {catname} matches pass the WISE AGN color selection")
     if len(df) == 0:
