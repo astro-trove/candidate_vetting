@@ -924,11 +924,13 @@ class Ps1Galaxy(Ps1):
     doi=["10.1088/1538-3873/aae3d9", "10.1093/mnras/staa2587"],
     ads_bibcode=["2018PASP..130l8001T", "2021MNRAS.500.1633B"],
 )
-class Ps1PointSource(Ps1):
+class Ps1Star(Ps1):
     """
     Pan-STARRS 1 Source Types and Redshifts with Machine Learning (PS1-STRM)
     catalogue, which classifies sources as point sources, quasars, or galaxies,
-    selecting for objects with Beck+21 prob_galaxy < 0.7
+    selecting for objects with Tachibana & Miller 18 point source score >
+    0.83, Beck+21 prob_galaxy < 0.7, Beck+21 prob_star > 0.7, and Beck+21
+    prob_qso < 0.7
     """
 
     name = "PS1 STRM"
@@ -937,7 +939,9 @@ class Ps1PointSource(Ps1):
         query_set = super().query(ra, dec, radius)
         return query_set.filter(
             ps_score__gt=PS1_TB18_POINT_SOURCE_THRESHOLD,
-            prob_galaxy__lt=PS1_TB18_POINT_SOURCE_THRESHOLD
+            prob_galaxy__lt=PS1_B21_DECISION_BOUNDARY,
+            prob_star__gt=PS1_B21_DECISION_BOUNDARY,
+            prob_qso__lt=PS1_B21_DECISION_BOUNDARY,
         )
 
 
@@ -949,7 +953,8 @@ class Ps1Qso(Ps1):
     """
     Pan-STARRS 1 Source Types and Redshifts with Machine Learning (PS1-STRM)
     catalogue, which classifies sources as point sources, quasars, or galaxies,
-    selecting for objects with Beck+21 prob_qso > 0.7
+    selecting for objects with Beck+21 prob_galaxy < 0.7, Beck+21 prob_star <
+    0.7, and Beck+21 prob_qso > 0.7
     """
 
     name = "PS1 STRM"
@@ -957,7 +962,9 @@ class Ps1Qso(Ps1):
     def query(self, ra, dec, radius=RADIUS_ARCSEC):
         query_set = super().query(ra, dec, radius)
         return query_set.filter(
-            prob_qso__gt=PS1_B21_DECISION_BOUNDARY
+            prob_galaxy__lt=PS1_B21_DECISION_BOUNDARY,
+            prob_star__lt=PS1_B21_DECISION_BOUNDARY,
+            prob_qso__gt=PS1_B21_DECISION_BOUNDARY,
         )
 
 
