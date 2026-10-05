@@ -18,6 +18,7 @@ from .util import (
     citation
 )
 from ..models import (
+    AllwiseQ3C,
     AsassnQ3C,
     Cosmicflows4Q3C,
     DelveDr3Q3C,
@@ -48,6 +49,64 @@ cosmo = settings.COSMO
 class _Log10(Func):
     function = "LOG10"
     template = "%(function)s(%(expressions)s)"
+
+
+@citation(
+    doi=[
+        "10.1088/0004-6256/140/6/1868",  # WISE mission
+        "10.1088/0004-637X/753/1/30",  # Stern+12 W1-W2 >= 0.8 AGN color cut
+        "10.1088/0004-637X/772/1/26",  # Assef+13 reliability-based color-magnitude cut
+    ],
+    ads_bibcode=[
+        "2010AJ....140.1868W",
+        "2013wise.rept....1C",  # AllWISE explanatory supplement
+        "2012ApJ...753...30S",
+        "2013ApJ...772...26A",
+    ],
+    data_url="https://irsa.ipac.caltech.edu/Missions/wise.html",
+)
+class AllWise(StaticCatalog):
+    """
+    AllWISE Source Catalog of mid-IR (W1, W2, W3, W4) photometry.
+
+    The mid-IR AGN color selection applied to this catalog in
+    `candidate_vetting.vet.wise_agn_color_association` uses the Stern+12 and
+    Assef+13 criteria, hence the extra citations above.
+    """
+
+    name = "AllWISE"
+    catalog_model = AllwiseQ3C
+    colmap = {
+        "cntr": "trove_uniq",
+        "designation": "name",
+        "ra": "ra",
+        "dec": "dec",
+        "w2mpro": "default_mag",  # Vega mag
+    }
+    mag_colname = "w2mpro"
+
+    def __init__(self):
+        super().__init__()
+        self.ogcols += ["w1mpro", "w1snr"]  # needed for the AGN color selection
+        # the mid-IR photometry the AGN color selection is based on is worth keeping
+        # in the standardized dataframe, so add it to the standard column names
+        self.colnames |= {"w1", "w2", "w1_w2", "w1_snr"}
+
+    def to_standardized_catalog(self, df):
+        df["filter"] = "W2"
+        df["w1"] = df.w1mpro.astype(float)  # Vega mags
+        df["w2"] = df.w2mpro.astype(float)
+        df["w1_w2"] = df.w1 - df.w2
+        df["w1_snr"] = df.w1snr.astype(float)
+        df = self._standardize_df(df)
+        for col in [
+            "z", "z_err", "z_neg_err", "z_pos_err",
+            "lumdist", "lumdist_err", "lumdist_neg_err", "lumdist_pos_err",
+        ]:
+            df[col] = np.nan
+        df["z_type"] = ""
+        df["submitter"] = ""
+        return df
 
 
 @citation(
@@ -870,11 +929,13 @@ class Ps1Galaxy(Ps1):
     doi=["10.1088/1538-3873/aae3d9", "10.1093/mnras/staa2587"],
     ads_bibcode=["2018PASP..130l8001T", "2021MNRAS.500.1633B"],
 )
-class Ps1PointSource(Ps1):
+class Ps1Star(Ps1):
     """
     Pan-STARRS 1 Source Types and Redshifts with Machine Learning (PS1-STRM)
     catalogue, which classifies sources as point sources, quasars, or galaxies,
-    selecting for objects with Beck+21 prob_galaxy < 0.7
+    selecting for objects with Tachibana & Miller 18 point source score >
+    0.83, Beck+21 prob_galaxy < 0.7, Beck+21 prob_star > 0.7, and Beck+21
+    prob_qso < 0.7
     """
 
     name = "PS1 STRM"
@@ -883,7 +944,9 @@ class Ps1PointSource(Ps1):
         query_set = super().query(ra, dec, radius)
         return query_set.filter(
             ps_score__gt=PS1_TB18_POINT_SOURCE_THRESHOLD,
-            prob_galaxy__lt=PS1_TB18_POINT_SOURCE_THRESHOLD
+            prob_galaxy__lt=PS1_B21_DECISION_BOUNDARY,
+            prob_star__gt=PS1_B21_DECISION_BOUNDARY,
+            prob_qso__lt=PS1_B21_DECISION_BOUNDARY,
         )
 
 
@@ -895,7 +958,8 @@ class Ps1Qso(Ps1):
     """
     Pan-STARRS 1 Source Types and Redshifts with Machine Learning (PS1-STRM)
     catalogue, which classifies sources as point sources, quasars, or galaxies,
-    selecting for objects with Beck+21 prob_qso > 0.7
+    selecting for objects with Beck+21 prob_galaxy < 0.7, Beck+21 prob_star <
+    0.7, and Beck+21 prob_qso > 0.7
     """
 
     name = "PS1 STRM"
@@ -903,7 +967,9 @@ class Ps1Qso(Ps1):
     def query(self, ra, dec, radius=RADIUS_ARCSEC):
         query_set = super().query(ra, dec, radius)
         return query_set.filter(
-            prob_qso__gt=PS1_B21_DECISION_BOUNDARY
+            prob_galaxy__lt=PS1_B21_DECISION_BOUNDARY,
+            prob_star__lt=PS1_B21_DECISION_BOUNDARY,
+            prob_qso__gt=PS1_B21_DECISION_BOUNDARY,
         )
 
 
