@@ -31,6 +31,7 @@ import astropy.units as u
 from django.db.models import F
 from candidate_vetting.models import EvccQ3C
 from candidate_vetting.public_catalogs.util import cone_search_q3c
+from candidate_vetting.db import jit_disabled
 
 from candidate_vetting.public_catalogs.static_catalogs import (
     AllWise,
@@ -301,21 +302,27 @@ def host_association(
     for catalog in galaxy_catalogs:
         cat = catalog()
         catname = str(cat)
-        if _verbose:
-            logger.info(f"Querying {cat}...")
-        query_set = cat.pcc_filter(ra, dec, radius=radius, pcc_max=pcc_threshold)
-        if _verbose:
-            logger.info(f"Found {query_set.count()} matches in {catname}")
 
-        # if no queries are returned we can skip this catalog
-        if query_set.count() == 0:
-            continue
+        with jit_disabled(cat.catalog_model):
+            if _verbose:
+                logger.info(f"Querying {cat}...")
 
-        # convert to a dataframe and standardize the column names
-        cols = list(cat.ogcols) + ["ang_dist", "pcc"]
-        rows = query_set.values_list(*cols)
-        df = pd.DataFrame.from_records(rows, columns=cols)
-        df = cat.to_standardized_catalog(df)
+            query_set = cat.pcc_filter(ra, dec, radius=radius, pcc_max=pcc_threshold)
+
+            # fetch the results, convert to a dataframe and standardize the column names
+            # this is probably the slowest step!
+            cols = list(cat.ogcols) + ["ang_dist", "pcc"]
+            rows = query_set.values_list(*cols)
+
+            if _verbose:
+                logger.info(f"Found {len(rows)} matches in {catname}")
+
+            # if no queries are returned we can skip this catalog
+            if not len(rows):
+                continue
+
+            df = pd.DataFrame.from_records(rows, columns=cols)
+            df = cat.to_standardized_catalog(df)
 
         # some extra cleaning before continuing
         df = df.dropna(subset=["default_mag", "ra", "dec"])  # drop rows without the information we need
@@ -323,12 +330,12 @@ def host_association(
             df["trove_uniq"] = df["trove_uniq"].astype(int)  # set to an int
         except KeyError:
             df["trove_uniq"] = df["name"].astype(int) # need to do this for LS DR9 and LS DR10, for which name = their ID
-
+        
         # copy the ang_dist column to a column called "offset" for
         # backwards compatability
         # and convert to arcsec from degrees
         df["offset"] = 3600 * df.ang_dist
-
+        
         # now save the cleaned dataset
         df["catalog"] = catname
         res.append(df)
