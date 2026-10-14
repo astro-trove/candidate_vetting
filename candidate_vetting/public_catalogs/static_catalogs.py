@@ -470,10 +470,15 @@ class GladePlus(StaticCatalog):
     def to_standardized_catalog(self, df):
 
         def _parse_dist_flag_col(row):
-            if row.dist_flag <= 1:
+            if row.dist_flag == 1:
                 return "photo-z"
-            return "spec-z"
-
+            elif row.dist_flag == 2:
+                return "z-ind."
+            elif row.dist_flag == 3:
+                return "spec-z"
+            else:
+                return "no dist." # this is a catchall case for when dist_flag=0, and if it is missing
+            
         df["z_type"] = df.apply(_parse_dist_flag_col, axis=1)
 
         df["filter"] = "b"
@@ -829,9 +834,17 @@ class NedLvs(StaticCatalog):
         def _get_ztype(row):
             if row.distmpc_method == "zIndependent":
                 return "z ind."
+
             if row.z_tech == "SPEC":
                 return "spec-z"
-            return "photo-z"
+            elif row.z_tech in {"PHOT", "INFD", "MOD"}:
+                return "photo-z"
+            
+            # there are genuinely some distances where the source is unknown in this
+            # catalog, specifically when z_tech in {"UNKN", "None", "NULL"}
+            # we could infer based on the uncertainty, but this feels like a safer
+            # approach
+            return "unknown"
 
         df["z_type"] = df.apply(_get_ztype, axis=1)
 
