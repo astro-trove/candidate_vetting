@@ -17,20 +17,14 @@ from django.conf import settings
 from trove_mpc import Transient
 from tom_targets.models import Target, TargetExtra
 from tom_nonlocalizedevents.models import NonLocalizedEvent
-
-# from tom_nonlocalizedevents.healpix_utils import (
-#     sa_engine,
-#     SaSkymapTile,
-#     uniq_to_bigintrange,
-#     update_all_credible_region_percents_for_candidates
-# )
-from tom_dataproducts.models import ReducedDatum
+from tom_dataproducts.models import PhotometryReducedDatum
 
 from astropy.coordinates import angular_separation
 import astropy.units as u
 from django.db.models import F
 from candidate_vetting.models import EvccQ3C
 from candidate_vetting.public_catalogs.util import cone_search_q3c
+from candidate_vetting.db import jit_disabled
 
 from candidate_vetting.public_catalogs.static_catalogs import (
     AllWise,
@@ -39,6 +33,7 @@ from candidate_vetting.public_catalogs.static_catalogs import (
     DelveDr3Galaxy,
     # DesiSpec,
     DesiDr1Galaxy,
+    DesiDr1Quasar,
     ExtendedVirgoClusterCatalog,
     GladePlus,
     Gwgc,
@@ -57,6 +52,8 @@ from candidate_vetting.public_catalogs.static_catalogs import (
     Milliquas,
     Ps1Qso,
     RomaBzcat,
+    NedLvs,
+    # TwoMass,
 )
 
 if minversion(np, "2.0.0"):
@@ -91,15 +88,11 @@ HOST_ASSOC_RADIUS = 5 * 60  # 5 arcmin = 300 arcsec, as used in Franz+25 and Vie
 PS_ASSOC_RADIUS = 2  # 2 arcsec, as used in Franz+25 and Vieira+26
 AGN_ASSOC_RADIUS = 2  # 2 arcsec, as used in Franz+25 and Vieira+26
 
-# WISE mid-IR AGN color selection (Vega mags), used when no AGN catalog match is found
-# Stern+12: W1 - W2 > 0.8 for W2 <= 15.05
-STERN12_W1W2_MIN = 0.8
-STERN12_W2_MAX = 15.05
-# Assef+13 eq. 3: W1 - W2 > alpha * exp(beta * (W2 - gamma)^2) for W2 < 17.11,
-# using the 90% reliability parameters
-ASSEF13_R90 = (0.662, 0.232, 13.97)  # (alpha, beta, gamma)
-ASSEF13_W2_MAX = 17.11
-WISE_W1_SNR_MIN = 3  # W1 S/N > 3 limit imposed in Assef+13
+# Assef+18 eq. 4, 90% reliability (R90) parameters calibrated on AllWISE photometry
+ASSEF18_R90 = (0.650, 0.153, 13.86)  # (alpha, beta, gamma)
+# Assef+18 sec. 3 catalog cuts: saturation limits, W2 S/N, point sources
+ASSEF18_W1_MIN, ASSEF18_W2_MIN = 8, 7
+ASSEF18_W2_SNR_MIN = 5
 
 # After we order the dataframe by the Pcc score, remove any host matches with a greater
 # Pcc score than this
@@ -302,21 +295,27 @@ def host_association(
     for catalog in galaxy_catalogs:
         cat = catalog()
         catname = str(cat)
-        if _verbose:
-            logger.info(f"Querying {cat}...")
-        query_set = cat.pcc_filter(ra, dec, radius=radius, pcc_max=pcc_threshold)
-        if _verbose:
-            logger.info(f"Found {query_set.count()} matches in {catname}")
 
-        # if no queries are returned we can skip this catalog
-        if query_set.count() == 0:
-            continue
+        with jit_disabled(cat.catalog_model):
+            if _verbose:
+                logger.info(f"Querying {cat}...")
 
-        # convert to a dataframe and standardize the column names
-        cols = list(cat.ogcols) + ["ang_dist", "pcc"]
-        rows = query_set.values_list(*cols)
-        df = pd.DataFrame.from_records(rows, columns=cols)
-        df = cat.to_standardized_catalog(df)
+            query_set = cat.pcc_filter(ra, dec, radius=radius, pcc_max=pcc_threshold)
+
+            # fetch the results, convert to a dataframe and standardize the column names
+            # this is probably the slowest step!
+            cols = list(cat.ogcols) + ["ang_dist", "pcc"]
+            rows = query_set.values_list(*cols)
+
+            if _verbose:
+                logger.info(f"Found {len(rows)} matches in {catname}")
+
+            # if no queries are returned we can skip this catalog
+            if not len(rows):
+                continue
+
+            df = pd.DataFrame.from_records(rows, columns=cols)
+            df = cat.to_standardized_catalog(df)
 
         # some extra cleaning before continuing
         df = df.dropna(subset=["default_mag", "ra", "dec"])  # drop rows without the information we need
@@ -324,12 +323,12 @@ def host_association(
             df["trove_uniq"] = df["trove_uniq"].astype(int)  # set to an int
         except KeyError:
             df["trove_uniq"] = df["name"].astype(int) # need to do this for LS DR9 and LS DR10, for which name = their ID
-
+        
         # copy the ang_dist column to a column called "offset" for
         # backwards compatability
         # and convert to arcsec from degrees
         df["offset"] = 3600 * df.ang_dist
-
+        
         # now save the cleaned dataset
         df["catalog"] = catname
         res.append(df)
@@ -391,18 +390,12 @@ def agn_association_2d(
         radius: float = AGN_ASSOC_RADIUS,
         _verbose: bool = False,
 ):
-    """
-    This searches the AGN catalogs for a match for this target. If there are no
-    catalog matches, fall back to a WISE mid-IR color selection of AGN (Stern+12 and
-    Assef+13) on AllWISE sources within the radius. WISE-selected rows also carry
-    the w1, w2, w1_w2, w1_snr and offset columns (see `wise_agn_color_association`).
-    """
-
     target = Target.objects.get(id=target_id)
     ra, dec = target.ra, target.dec
 
     agn_catalogs = [Milliquas,
                     RomaBzcat,
+                    DesiDr1Quasar,
                     Ps1Qso,
     ]
 
@@ -470,9 +463,7 @@ def wise_agn_color_association(
         _verbose: bool = False,
 ):
     """
-    Find AllWISE sources within radius of (ra, dec) with AGN-like mid-IR colors, i.e.
-    that pass either the Stern+12 cut (W2 <= 15.05) or the Assef+13 90% reliability
-    criterion (their eq. 3, 15.05 < W2 < 17.11)
+    Find AllWISE sources within radius of (ra, dec) with AGN-like mid-IR colors
     """
     cat = AllWise()
     catname = str(cat)
@@ -495,16 +486,17 @@ def wise_agn_color_association(
     w1 = df.w1mpro.astype(float)
     w2 = df.w2mpro.astype(float)
     color = w1 - w2
-    detected = df.w1snr.astype(float) > WISE_W1_SNR_MIN  # NaNs compare False
-
-    stern = (w2 <= STERN12_W2_MAX) & (color > STERN12_W1W2_MIN)
-    alpha, beta, gamma = ASSEF13_R90
-    assef = (
-        (w2 > STERN12_W2_MAX)
-        & (w2 < ASSEF13_W2_MAX)
-        & (color > alpha * np.exp(beta * (w2 - gamma) ** 2))
+    alpha, beta, gamma = ASSEF18_R90
+    limit = np.where(w2 > gamma, alpha * np.exp(beta * (w2 - gamma) ** 2), alpha)
+    clean = df.cc_flags.fillna("").str[:2] == "00"  # no artifacts in W1 or W2
+    # These are all of the checks that Assef+18 uses to justify the 90% reliability
+    quality = (
+        (w1 > ASSEF18_W1_MIN) & (w2 > ASSEF18_W2_MIN)
+        & (df.w2snr.astype(float) > ASSEF18_W2_SNR_MIN)
+        & (df.ext_flg.astype(float) == 0)
+        & clean
     )
-    df = df[detected & (stern | assef)]  # either criterion counts as an AGN
+    df = df[(color > limit) & quality]  # NaNs compare False
     if _verbose:
         logger.info(f"{len(df)} {catname} matches pass the WISE AGN color selection")
     if len(df) == 0:
@@ -606,12 +598,11 @@ def run_mpc(target_id: int) -> None:
     target = Target.objects.get(id=target_id)
 
     # get photometry, throwing out limiting mags, phot with no error, and phot with SNR < 5
-    phot = ReducedDatum.objects.filter(
+    phot = PhotometryReducedDatum.objects.filter(
         target_id=target_id,
-        data_type="photometry",
-        value__magnitude__isnull=False,
-        value__error__isnull=False,
-        value__error__lte=2.5 / np.log(10) / 5,
+        brightness__isnull=False,
+        brightness_error__isnull=False,
+        brightness_error__lte=2.5 / np.log(10) / 5,
     )
     # if more than (5-sigma) 1 detection, likely not a MPC object
     if phot.exists() and len(phot) > 1:

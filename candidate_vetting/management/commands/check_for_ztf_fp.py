@@ -5,9 +5,6 @@ command so that we can run it in a cronjob
 
 from django.core.management.base import BaseCommand
 from tom_nonlocalizedevents.models import NonLocalizedEvent
-from django.conf import settings
-from datetime import datetime
-import requests
 import logging
 
 from candidate_vetting.public_catalogs.phot_catalogs import ZTF_Forced_Phot
