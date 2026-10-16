@@ -34,7 +34,9 @@ from candidate_vetting.public_catalogs.static_catalogs import (
     # DesiSpec,
     DesiDr1Galaxy,
     DesiDr1Quasar,
+    DoradoClusterCatalog,
     ExtendedVirgoClusterCatalog,
+    FornaxClusterCatalog,
     GladePlus,
     Gwgc,
     # Hecate1,
@@ -105,6 +107,8 @@ PCC_THRESHOLD = 0.15  # this is the value used in Rastinejad+2022
 # 2) Does this catalog have spec-z's or photo-z's? A spec-z catalog is preferred.
 GALAXY_CATALOGS = [
     ExtendedVirgoClusterCatalog,
+    FornaxClusterCatalog,
+    DoradoClusterCatalog,
     GladePlus,
     Gwgc,
     Hecate2,
