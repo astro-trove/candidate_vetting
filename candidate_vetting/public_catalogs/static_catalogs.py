@@ -1,7 +1,7 @@
 """
 Define the static catalogs for querying
 """
-
+import numpy as np
 from astropy import units as u
 from astropy.cosmology import z_at_value
 import pandas as pd
