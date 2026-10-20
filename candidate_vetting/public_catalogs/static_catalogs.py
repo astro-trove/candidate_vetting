@@ -2,8 +2,9 @@
 Define the static catalogs for querying
 """
 
+import numpy as np
 from astropy import units as u
-from astropy.cosmology import z_at_value
+# from astropy.cosmology import z_at_value
 import pandas as pd
 
 from django.db.models import F, Func, Value, IntegerField, Case, When, CharField
@@ -470,8 +471,12 @@ class GladePlus(StaticCatalog):
     def to_standardized_catalog(self, df):
 
         def _parse_dist_flag_col(row):
-            if row.dist_flag <= 1:
+            if row.dist_flag == 0:
+                return "no dist."
+            elif row.dist_flag == 1:
                 return "photo-z"
+            elif row.dist_flag == 2:
+                return "z-ind."
             return "spec-z"
 
         df["z_type"] = df.apply(_parse_dist_flag_col, axis=1)
@@ -509,7 +514,7 @@ class Gwgc(StaticCatalog):
         df = self._standardize_df(df)
         df["lumdist_neg_err"] = df.lumdist_err
         df["lumdist_pos_err"] = df.lumdist_err
-        df["z_type"] = "spec-z/z ind."
+        df["z_type"] = "spec-z/z-ind."
         df["submitter"] = ""
         return df
 
@@ -540,7 +545,7 @@ class Hecate1(StaticCatalog):
         self.colmap["lumdist_neg_err"] = "lumdist_neg_err"
         self.colmap["lumdist_pos_err"] = "lumdist_pos_err"
 
-        df["z_type"] = df.apply(lambda row: "z ind." if row.dmethod == "N" else "spec-z", axis=1)
+        df["z_type"] = df.apply(lambda row: "z-ind." if row.dmethod == "N" else "spec-z", axis=1)
 
         df["submitter"] = ""
         df["filter"] = "r"
@@ -587,7 +592,7 @@ class Hecate2(StaticCatalog):
         self.colmap["lumdist_pos_err"] = "lumdist_pos_err"
         # self.colmap["z"] = "z"
 
-        df["z_type"] = df.apply(lambda row: "z ind." if row.f_dist == 0 else "spec-z", axis=1)
+        df["z_type"] = df.apply(lambda row: "z-ind." if row.f_dist == 0 else "spec-z", axis=1)
 
         df["submitter"] = ""
 
@@ -828,7 +833,7 @@ class NedLvs(StaticCatalog):
     def to_standardized_catalog(self, df):
         def _get_ztype(row):
             if row.distmpc_method == "zIndependent":
-                return "z ind."
+                return "z-ind."
             if row.z_tech == "SPEC":
                 return "spec-z"
             return "photo-z"
