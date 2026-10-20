@@ -448,7 +448,7 @@ class Gaiadr3Variable(StaticCatalog):
 class GladePlus(StaticCatalog):
     name = "GLADE+"
     catalog_model = GladePlusQ3C
-    mag_colname = "b"
+    mag_colname = "b" # note that this is actually B-band (not lowercase b!), SQL column names are case insensitive
     hierarchical_name_columns = ["gwgc", "hyperleda", "sdss", "wise", "twomass", "pgc", "gn"]
     
     colmap = {
