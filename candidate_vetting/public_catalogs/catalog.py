@@ -60,7 +60,8 @@ class StaticCatalog(Catalog):
     name = None
     hierarchical_name_columns = []
     colmap = {}
-
+    mag_ab_offset = 0
+    
     def __init__(self, verbose: bool = False):
         """A catalog object for querying static astronomy catalogs (like galaxy
         catalogs)
@@ -149,6 +150,7 @@ class StaticCatalog(Catalog):
             dec,
             pcc_max,
             self.mag_colname,
+            self.mag_ab_offset,
             ra_colname=self.ra_colname,
             dec_colname=self.dec_colname,
         )
