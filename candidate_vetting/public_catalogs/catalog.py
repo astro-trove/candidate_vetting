@@ -60,7 +60,8 @@ class StaticCatalog(Catalog):
     name = None
     hierarchical_name_columns = []
     colmap = {}
-
+    mag_ab_offset = 0
+    
     def __init__(self, verbose: bool = False):
         """A catalog object for querying static astronomy catalogs (like galaxy
         catalogs)
@@ -149,6 +150,7 @@ class StaticCatalog(Catalog):
             dec,
             pcc_max,
             self.mag_colname,
+            self.mag_ab_offset,
             ra_colname=self.ra_colname,
             dec_colname=self.dec_colname,
         )
@@ -158,6 +160,10 @@ class StaticCatalog(Catalog):
             raise TypeError("Missing the colmap, can't standardize dataset!")
 
         df = df.rename(columns=self.colmap)
+
+        # convert from Vega to AB magnitude system
+        df["default_mag"] = df.default_mag + self.mag_ab_offset
+
         return df[list(self.colnames & set(df.columns))]
 
     def _annotate_with_coalesce(self, queryset, output_field_name='name'):
