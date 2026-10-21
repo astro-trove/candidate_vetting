@@ -813,6 +813,7 @@ class NedLvs(StaticCatalog):
 
     name = "NED-LVS"
     mag_colname = "m_j"
+    mag_ab_offset = 0.91 # for J-band Vega to AB system
     catalog_model = NedlvsQ3C
     colmap = {
         "id": "trove_uniq",
