@@ -160,6 +160,10 @@ class StaticCatalog(Catalog):
             raise TypeError("Missing the colmap, can't standardize dataset!")
 
         df = df.rename(columns=self.colmap)
+
+        # convert from Vega to AB magnitude system
+        df["default_mag"] = df.default_mag + self.mag_ab_offset
+
         return df[list(self.colnames & set(df.columns))]
 
     def _annotate_with_coalesce(self, queryset, output_field_name='name'):
