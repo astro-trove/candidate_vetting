@@ -481,7 +481,7 @@ class GladePlus(StaticCatalog):
 
         df["z_type"] = df.apply(_parse_dist_flag_col, axis=1)
 
-        df["filter"] = "b"
+        df["filter"] = "B"
         df = self._standardize_df(df)
         df["z_neg_err"] = df.z_err
         df["z_pos_err"] = df.z_err
@@ -508,9 +508,10 @@ class Gwgc(StaticCatalog):
         "b_app": "default_mag",  # magnitude column to use for pcc
     }
     mag_colname = "b_app"
-
+    mag_ab_offset = -0.09
+    
     def to_standardized_catalog(self, df):
-        df["filter"] = "b"
+        df["filter"] = "B"
         df = self._standardize_df(df)
         df["lumdist_neg_err"] = df.lumdist_err
         df["lumdist_pos_err"] = df.lumdist_err
