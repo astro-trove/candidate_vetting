@@ -21,7 +21,7 @@ from tom_dataproducts.models import PhotometryReducedDatum
 
 from astropy.coordinates import angular_separation
 import astropy.units as u
-from django.db.models import F
+from django.db.models import F, Case, When, Value, FloatField
 from candidate_vetting.models import EvccQ3C
 from candidate_vetting.public_catalogs.util import cone_search_q3c
 from candidate_vetting.db import jit_disabled
@@ -136,7 +136,7 @@ def localization_sequence_from_name(nonlocalized_event_name):
         if test_latest_time > curr_latest_time:
             latest_seq = seq
 
-    return seq
+    return latest_seq
 
 
 def save_score_to_targetextra(target, key, score):
@@ -596,6 +596,189 @@ def evcc_galaxy_check(target_id: int, kron_scale: float = 2.0) -> str:
     TargetExtra.objects.create(target=target, key="EVCC Within Galaxy", value=result)
     return result
 
+######################################################################################
+# --- Fornax and Dorado geometric association --------
+# These DESI Legacy Survey DR10 catalogs have no Kron radius, so we use the
+# half-light (effective) radius shape_r (r_h) and approximate a Kron-like
+# radius as r_kron = RH_TO_KRON * r_h. A target is 'within' a galaxy when its
+# angular offset < kron_scale * r_kron. Constants below are derived once from
+# each ingested catalog and let us skip the DB for targets off the footprint.
+# Additionally, for the cases where shape_r = 0 (and they are galaxies that
+# have been misclassified PSF), we assume
+# shape_r = 5 kpc
+RH_TO_KRON = 2.5  # r_kron / r_h; typical for galaxy surface-brightness profiles
+
+FORNAX_CENTER_RA = 54.290  # deg (catalog median)
+FORNAX_CENTER_DEC = -35.519  # deg
+FORNAX_BOUNDING_RADIUS = 10.949  # deg, max center-to-galaxy separation (read from the catalog); for making a search box
+FORNAX_MAX_RH = 180.1  # arcsec, largest shape_r in catalog (read from the catalog)
+FORNAX_DISTANCE_MPC = 20.0  # fixed cluster distance (Blakeslee+09)
+
+
+DORADO_CENTER_RA = 64.875  # deg (catalog median)
+DORADO_CENTER_DEC = -55.927  # deg
+DORADO_BOUNDING_RADIUS = 3.588  # deg
+DORADO_MAX_RH = 81.1  # arcsec
+DORADO_DISTANCE_MPC = 17.69  # fixed group distance (Rampazzo+20)
+
+
+SHAPE_R_FLOOR_KPC = 5.0  # kpc (physical half-light radius for PSF-fit galaxies)
+ARCSEC_PER_RADIAN = 206265.0
+
+CLUSTER_DF_COLMAP = {
+    "name": "ID",
+    "offset_arcsec": "Offset",
+    "offset_kron": "OffsetKron",
+    "eff_shape_r": "Rh",
+    "r_kron": "rKron",
+    "dered_mag_r": "rMag",
+    "type": "Type",
+    "radvel": "radvel",
+    "dist_mpc": "Dist_Mpc",
+}
+
+
+def _cluster_galaxy_check(
+    target_id: int,
+    *,
+    model,
+    key: str,
+    cluster: str,
+    dist_mpc: float,
+    center_ra: float,
+    center_dec: float,
+    bounding_radius: float,
+    max_rh: float,
+    kron_scale: float = 2.0,
+) -> str:
+    """
+    Shared geometric association against an LS DR10 cluster catalog. A target is
+    'within' a galaxy when its angular offset < kron_scale * r_kron, where
+    r_kron = RH_TO_KRON * shape_r (half-light radius), and shape_r <= 0 (PSF-fit
+    galaxies) is floored to SHAPE_R_FLOOR_KPC. Writes matches to the given
+    TargetExtra `key` as JSON records and returns that JSON string ("[]" when
+    none). Used by fornax_galaxy_check and dorado_galaxy_check.
+    """
+    target = Target.objects.get(id=target_id)
+    ra, dec = target.ra, target.dec
+
+    # cheap footprint guard: no DB query for the vast majority of sky.
+    guard_radius = bounding_radius + kron_scale * RH_TO_KRON * max_rh / 3600.0
+    sep_deg = (
+        angular_separation(
+            ra * u.deg,
+            dec * u.deg,
+            center_ra * u.deg,
+            center_dec * u.deg,
+        )
+        .to(u.deg)
+        .value
+    )
+    if sep_deg > guard_radius:
+        TargetExtra.objects.update_or_create(
+            target=target,
+            key=key,
+            defaults={"value": "[]"},
+        )
+        return "[]"
+
+    # effective half-light radius: measured shape_r, or the SHAPE_R_FLOOR_KPC
+    # physical floor (converted to arcsec at this cluster's distance) for the
+    # PSF-fit galaxies (shape_r <= 0). Applied in-DB so the containment filter
+    # and the cone both use the floored value.
+    rh_floor_arcsec = SHAPE_R_FLOOR_KPC / (dist_mpc * 1e3) * ARCSEC_PER_RADIAN
+    eff_shape_r = Case(
+        When(shape_r__gt=0, then=F("shape_r")),
+        default=Value(rh_floor_arcsec),
+        output_field=FloatField(),
+    )
+
+    # cone, then push containment into the DB. ang_dist is DEGREES, shape_r is
+    # arcsec, and r_kron = RH_TO_KRON * eff_shape_r, so compare in degrees:
+    #   ang_dist < kron_scale * RH_TO_KRON * eff_shape_r / 3600.
+    cone_radius = kron_scale * RH_TO_KRON * max_rh  # arcsec
+    qs = (
+        cone_search_q3c(
+            model.objects.all(),
+            ra,
+            dec,
+            radius=cone_radius,
+            ra_colname="ra",
+            dec_colname="dec",
+        )
+        .annotate(
+            eff_shape_r=eff_shape_r,
+        )
+        .filter(ang_dist__lt=kron_scale * RH_TO_KRON * F("eff_shape_r") / 3600.0)
+    )
+
+    df = pd.DataFrame(qs.values("name", "ang_dist", "eff_shape_r", "type", "dered_mag_r", "radvel"))
+
+    if df.empty:
+        TargetExtra.objects.update_or_create(
+            target=target,
+            key=key,
+            defaults={"value": "[]"},
+        )
+        return "[]"
+
+    df["r_kron"] = RH_TO_KRON * df["eff_shape_r"]
+    df["offset_arcsec"] = df["ang_dist"] * 3600.0
+    df["offset_kron"] = (df["offset_arcsec"] / df["r_kron"]).round(2)
+
+    df["r_kron"] = df["r_kron"].round(2)
+    df["offset_arcsec"] = df["offset_arcsec"].round(2)
+
+    df["radvel"] = df["radvel"].replace(0, np.nan)  # 0 = missing
+    df["dist_mpc"] = dist_mpc
+    df = df.sort_values("offset_arcsec")
+
+    for _, r in df.iterrows():
+        logger.info(
+            f"{target.name} within {kron_scale}x r_kron of {cluster} {r['name']}: "
+            f'offset={r["offset_arcsec"]:.1f}" ({r["offset_kron"]:.2f} r_kron)'
+        )
+
+    newdf = df[list(CLUSTER_DF_COLMAP.keys())].rename(columns=CLUSTER_DF_COLMAP)
+    result = newdf.to_json(orient="records")  # pandas serializes NaN -> null
+    TargetExtra.objects.filter(target_id=target.id, key=key).delete()
+    TargetExtra.objects.create(target=target, key=key, value=result)
+    return result
+
+
+def fornax_galaxy_check(target_id: int, kron_scale: float = 2.0) -> str:
+    """Geometric association with Fornax cluster galaxies (LS DR10): 'within'
+    a galaxy when offset < kron_scale * r_kron, r_kron = 2.5 * shape_r. Writes
+    the "Fornax Within Galaxy" TargetExtra and returns its JSON."""
+    return _cluster_galaxy_check(
+        target_id,
+        model=FornaxClusterCatalog().catalog_model,
+        key="Fornax Within Galaxy",
+        cluster="Fornax",
+        dist_mpc=FORNAX_DISTANCE_MPC,
+        center_ra=FORNAX_CENTER_RA,
+        center_dec=FORNAX_CENTER_DEC,
+        bounding_radius=FORNAX_BOUNDING_RADIUS,
+        max_rh=FORNAX_MAX_RH,
+        kron_scale=kron_scale,
+    )
+
+
+def dorado_galaxy_check(target_id: int, kron_scale: float = 2.0) -> str:
+    """As fornax_galaxy_check, for Dorado group galaxies (LS DR10). Writes the
+    "Dorado Within Galaxy" TargetExtra."""
+    return _cluster_galaxy_check(
+        target_id,
+        model=DoradoClusterCatalog().catalog_model,
+        key="Dorado Within Galaxy",
+        cluster="Dorado",
+        dist_mpc=DORADO_DISTANCE_MPC,
+        center_ra=DORADO_CENTER_RA,
+        center_dec=DORADO_CENTER_DEC,
+        bounding_radius=DORADO_BOUNDING_RADIUS,
+        max_rh=DORADO_MAX_RH,
+        kron_scale=kron_scale,
+    )
 
 def run_mpc(target_id: int) -> None:
 
