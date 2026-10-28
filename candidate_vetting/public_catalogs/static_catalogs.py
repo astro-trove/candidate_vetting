@@ -449,7 +449,7 @@ class Gaiadr3Variable(StaticCatalog):
 class GladePlus(StaticCatalog):
     name = "GLADE+"
     catalog_model = GladePlusQ3C
-    mag_colname = "b"
+    mag_colname = "b" # note that this is actually B-band (not lowercase b!), SQL column names are case insensitive
     hierarchical_name_columns = ["gwgc", "hyperleda", "sdss", "wise", "twomass", "pgc", "gn"]
     
     colmap = {
@@ -481,7 +481,7 @@ class GladePlus(StaticCatalog):
 
         df["z_type"] = df.apply(_parse_dist_flag_col, axis=1)
 
-        df["filter"] = "b"
+        df["filter"] = "B"
         df = self._standardize_df(df)
         df["z_neg_err"] = df.z_err
         df["z_pos_err"] = df.z_err
@@ -508,9 +508,10 @@ class Gwgc(StaticCatalog):
         "b_app": "default_mag",  # magnitude column to use for pcc
     }
     mag_colname = "b_app"
-
+    mag_ab_offset = -0.09
+    
     def to_standardized_catalog(self, df):
-        df["filter"] = "b"
+        df["filter"] = "B"
         df = self._standardize_df(df)
         df["lumdist_neg_err"] = df.lumdist_err
         df["lumdist_pos_err"] = df.lumdist_err
@@ -813,6 +814,7 @@ class NedLvs(StaticCatalog):
 
     name = "NED-LVS"
     mag_colname = "m_j"
+    mag_ab_offset = 0.91 # for J-band Vega to AB system
     catalog_model = NedlvsQ3C
     colmap = {
         "id": "trove_uniq",

@@ -91,7 +91,7 @@ def cone_search_q3c(queryset, ra, dec, radius=RADIUS_ARCSEC, ra_colname="ra", de
     )
 
 
-def pcc_q3c(queryset, ra, dec, pcc_max, mag_colname, ra_colname="ra", dec_colname="dec"):
+def pcc_q3c(queryset, ra, dec, pcc_max, mag_colname, mag_ab_offset=0, ra_colname="ra", dec_colname="dec"):
     """Do a cut on Pcc with q3c on the provided QuerySet. Pcc is from Bloom+2002 and
     we use the re-calibration from Berger2010.
 
@@ -107,6 +107,9 @@ def pcc_q3c(queryset, ra, dec, pcc_max, mag_colname, ra_colname="ra", dec_colnam
         The maximum Pcc to consider
     mag_colname : str
         The magnitude column name to use for Pcc
+    mag_ab_offset : float
+        The magnitude system offset from AB. For example, if the catalog provides J-band
+        magnitudes in the Vega system, you would pass in 0.91. 
     ra_colname: str, default='ra'
         The RA column name in the SQL table
     dec_colname: str, default="dec"
@@ -124,7 +127,7 @@ def pcc_q3c(queryset, ra, dec, pcc_max, mag_colname, ra_colname="ra", dec_colnam
             pcc_prefactor
             * Power(
                 10,
-                Greatest(0.33 * (F(mag_colname) - 24) - 2.44, Value(-10)),
+                Greatest(0.33 * ((F(mag_colname) + mag_ab_offset) - 24) - 2.44, Value(-10)),
             ),
             output_field=FloatField(),
         ),
