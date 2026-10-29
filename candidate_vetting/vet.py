@@ -21,9 +21,9 @@ from tom_dataproducts.models import PhotometryReducedDatum
 
 from astropy.coordinates import angular_separation
 import astropy.units as u
-from django.db.models import F
+from django.db.models import F, Case, When, Value, FloatField
 from candidate_vetting.models import EvccQ3C
-from candidate_vetting.public_catalogs.util import cone_search_q3c
+from candidate_vetting.public_catalogs.util import cone_search_q3c, _cluster_galaxy_check, RH_TO_KRON
 from candidate_vetting.db import jit_disabled
 
 from candidate_vetting.public_catalogs.static_catalogs import (
@@ -34,7 +34,9 @@ from candidate_vetting.public_catalogs.static_catalogs import (
     # DesiSpec,
     DesiDr1Galaxy,
     DesiDr1Quasar,
+    DoradoClusterCatalog,
     ExtendedVirgoClusterCatalog,
+    FornaxClusterCatalog,
     GladePlus,
     Gwgc,
     # Hecate1,
@@ -105,6 +107,8 @@ PCC_THRESHOLD = 0.15  # this is the value used in Rastinejad+2022
 # 2) Does this catalog have spec-z's or photo-z's? A spec-z catalog is preferred.
 GALAXY_CATALOGS = [
     ExtendedVirgoClusterCatalog,
+    FornaxClusterCatalog,
+    DoradoClusterCatalog,
     GladePlus,
     Gwgc,
     Hecate2,
@@ -117,6 +121,40 @@ GALAXY_CATALOGS = [
     Ps1Galaxy,
     Sdss12PhotozGalaxy,
 ]
+
+# --- EVCC (Extended Virgo Cluster Catalog) geometric association -----------
+# Constants derived once from the static evcc_q3c table (1589 rows). They let
+# us reject the ~97% of sky nowhere near Virgo with pure arithmetic, no DB hit.
+EVCC_CENTER_RA       = 187.193   # deg
+EVCC_CENTER_DEC      =   9.262   # deg
+EVCC_BOUNDING_RADIUS =  19.435   # deg, max center-to-galaxy separation
+EVCC_MAX_KRON        = 476.7     # arcsec, largest Kron radius (rad) in catalog
+EVCC_DISTANCE_MPC    = 18.0      # Mpc, fixed distance 
+
+######################################################################################
+# --- Fornax and Dorado geometric association --------
+# These DESI Legacy Survey DR10 catalogs have no Kron radius, so we use the
+# half-light (effective) radius shape_r (r_h) and approximate a Kron-like
+# radius as r_kron = RH_TO_KRON * r_h. A target is 'within' a galaxy when its
+# angular offset < kron_scale * r_kron. Constants below are derived once from
+# each ingested catalog and let us skip the DB for targets off the footprint.
+# Additionally, for the cases where shape_r = 0 (and they are galaxies that
+# have been misclassified PSF), we assume
+# shape_r = 5 kpc
+#RH_TO_KRON = 2.5  # r_kron / r_h; typical for galaxy surface-brightness profiles
+
+FORNAX_CENTER_RA = 54.290  # deg (catalog median)
+FORNAX_CENTER_DEC = -35.519  # deg
+FORNAX_BOUNDING_RADIUS = 10.949  # deg, max center-to-galaxy separation (read from the catalog); for making a search box
+FORNAX_MAX_RH = 180.1  # arcsec, largest shape_r in catalog (read from the catalog)
+FORNAX_DISTANCE_MPC = 20.0  # fixed cluster distance (Blakeslee+09)
+
+
+DORADO_CENTER_RA = 64.875  # deg (catalog median)
+DORADO_CENTER_DEC = -55.927  # deg
+DORADO_BOUNDING_RADIUS = 3.588  # deg
+DORADO_MAX_RH = 81.1  # arcsec
+DORADO_DISTANCE_MPC = 17.69  # fixed group distance (Rampazzo+20)
 
 
 def localization_sequence_from_name(nonlocalized_event_name):
@@ -132,7 +170,7 @@ def localization_sequence_from_name(nonlocalized_event_name):
         if test_latest_time > curr_latest_time:
             latest_seq = seq
 
-    return seq
+    return latest_seq
 
 
 def save_score_to_targetextra(target, key, score):
@@ -510,24 +548,6 @@ def wise_agn_color_association(
     df["catalog"] = cat.__class__.__name__
     return df
 
-# --- EVCC (Extended Virgo Cluster Catalog) geometric association -----------
-# Constants derived once from the static evcc_q3c table (1589 rows). They let
-# us reject the ~97% of sky nowhere near Virgo with pure arithmetic, no DB hit.
-EVCC_CENTER_RA       = 187.193   # deg
-EVCC_CENTER_DEC      =   9.262   # deg
-EVCC_BOUNDING_RADIUS =  19.435   # deg, max center-to-galaxy separation
-EVCC_MAX_KRON        = 476.7     # arcsec, largest Kron radius (rad) in catalog
-
-EVCC_DF_COLMAP = {
-    "name":          "ID",
-    "offset_arcsec": "Offset",
-    "offset_kron":   "OffsetKron",
-    "rad":           "Kron",
-    "r50":           "R50",
-    "rmag":          "rMag",
-    "morphology":    "Type",
-    "cz_kms":        "cz",
-}
 
 def evcc_galaxy_check(target_id: int, kron_scale: float = 2.0) -> str:
     """
@@ -537,61 +557,51 @@ def evcc_galaxy_check(target_id: int, kron_scale: float = 2.0) -> str:
     returns that JSON string ("[]" when no matches). Returns immediately, with
     NO database query, for targets off the EVCC footprint.
     """
-    target = Target.objects.get(id=target_id)
-    ra, dec = target.ra, target.dec
-
-    # cheap footprint guard: no DB query for the ~97% of sky off Virgo.
-    guard_radius = EVCC_BOUNDING_RADIUS + kron_scale * EVCC_MAX_KRON / 3600.0
-    sep_deg = angular_separation(
-        ra * u.deg, dec * u.deg,
-        EVCC_CENTER_RA * u.deg, EVCC_CENTER_DEC * u.deg,
-    ).to(u.deg).value
-    if sep_deg > guard_radius:
-        return "[]"
-
-    # cone, then push containment into the DB. ang_dist is DEGREES, rad arcsec,
-    # so compare in degrees: ang_dist < kron_scale * rad / 3600.
-    cone_radius = kron_scale * EVCC_MAX_KRON  # arcsec
-    qs = cone_search_q3c(
-        EvccQ3C.objects.exclude(rad=None),
-        ra, dec, radius=cone_radius, ra_colname="ra", dec_colname="dec",
-    ).filter(ang_dist__lt=kron_scale * F("rad") / 3600.0)
-
-    df = pd.DataFrame(
-        qs.values("evcc", "vcc", "ngc", "ang_dist", "rad", "r50", "rmag",
-                  "pmorph", "srvel")
+    return _cluster_galaxy_check(
+        target_id,
+        model=ExtendedVirgoClusterCatalog().catalog_model,
+        key="EVCC Within Galaxy",
+        cluster="EVCC",
+        dist_mpc=EVCC_DISTANCE_MPC,
+        center_ra=EVCC_CENTER_RA,
+        center_dec=EVCC_CENTER_DEC,
+        bounding_radius=EVCC_BOUNDING_RADIUS,
+        max_kron_arcsec=EVCC_MAX_KRON,
+        kron_scale=kron_scale,
     )
 
-    if df.empty:
-        TargetExtra.objects.filter(target_id=target.id, key="EVCC Within Galaxy").delete()
-        TargetExtra.objects.create(
-            target=target, key="EVCC Within Galaxy", value="None"
-        )
-        return "[]"
-
-    df["offset_arcsec"] = (df["ang_dist"] * 3600.0).round(2)
-    df["offset_kron"]   = (df["ang_dist"] * 3600.0 / df["rad"]).round(2)
-    df["name"] = df.apply(
-        lambda r: f"NGC {r['ngc']}" if r["ngc"]
-        else f"VCC {r['vcc']}" if r["vcc"]
-        else f"EVCC {r['evcc']}",
-        axis=1,
+def fornax_galaxy_check(target_id: int, kron_scale: float = 2.0) -> str:
+    """Geometric association with Fornax cluster galaxies (LS DR10): 'within'
+    a galaxy when offset < kron_scale * r_kron, r_kron = 2.5 * shape_r. Writes
+    the "Fornax Within Galaxy" TargetExtra and returns its JSON."""
+    return _cluster_galaxy_check(
+        target_id,
+        model=FornaxClusterCatalog().catalog_model,
+        key="Fornax Within Galaxy",
+        cluster="Fornax",
+        dist_mpc=FORNAX_DISTANCE_MPC,
+        center_ra=FORNAX_CENTER_RA,
+        center_dec=FORNAX_CENTER_DEC,
+        bounding_radius=FORNAX_BOUNDING_RADIUS,
+        max_kron_arcsec=RH_TO_KRON * FORNAX_MAX_RH,
+        kron_scale=kron_scale,
     )
-    df = df.rename(columns={"pmorph": "morphology", "srvel": "cz_kms"})
-    df = df.sort_values("offset_arcsec")
 
-    for _, r in df.iterrows():
-        logger.info(
-            f"{target.name} within {kron_scale}x Kron of {r['name']}: "
-            f"offset={r['offset_arcsec']:.1f}\" ({r['offset_kron']:.2f} Kron radii)"
-        )
-
-    newdf = df[list(EVCC_DF_COLMAP.keys())].rename(columns=EVCC_DF_COLMAP)
-    result = newdf.to_json(orient="records")   # pandas serializes NaN -> null
-    TargetExtra.objects.filter(target_id=target.id, key="EVCC Within Galaxy").delete()
-    TargetExtra.objects.create(target=target, key="EVCC Within Galaxy", value=result)
-    return result
-
+def dorado_galaxy_check(target_id: int, kron_scale: float = 2.0) -> str:
+    """As fornax_galaxy_check, for Dorado group galaxies (LS DR10). Writes the
+    "Dorado Within Galaxy" TargetExtra."""
+    return _cluster_galaxy_check(
+        target_id,
+        model=DoradoClusterCatalog().catalog_model,
+        key="Dorado Within Galaxy",
+        cluster="Dorado",
+        dist_mpc=DORADO_DISTANCE_MPC,
+        center_ra=DORADO_CENTER_RA,
+        center_dec=DORADO_CENTER_DEC,
+        bounding_radius=DORADO_BOUNDING_RADIUS,
+        max_kron_arcsec=RH_TO_KRON * DORADO_MAX_RH,
+        kron_scale=kron_scale,
+    )
 
 def run_mpc(target_id: int) -> None:
 
