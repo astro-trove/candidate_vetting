@@ -3,7 +3,7 @@ Define the static catalogs for querying
 """
 import numpy as np
 from astropy import units as u
-from astropy.cosmology import z_at_value
+# from astropy.cosmology import z_at_value
 import pandas as pd
 
 from django.db.models import F, Func, Value, IntegerField, Case, When, CharField
@@ -549,7 +549,7 @@ class Gaiadr3Variable(StaticCatalog):
 class GladePlus(StaticCatalog):
     name = "GLADE+"
     catalog_model = GladePlusQ3C
-    mag_colname = "b"
+    mag_colname = "b" # note that this is actually B-band (not lowercase b!), SQL column names are case insensitive
     hierarchical_name_columns = ["gwgc", "hyperleda", "sdss", "wise", "twomass", "pgc", "gn"]
     
     colmap = {
@@ -571,13 +571,17 @@ class GladePlus(StaticCatalog):
     def to_standardized_catalog(self, df):
 
         def _parse_dist_flag_col(row):
-            if row.dist_flag <= 1:
+            if row.dist_flag == 0:
+                return "no dist."
+            elif row.dist_flag == 1:
                 return "photo-z"
+            elif row.dist_flag == 2:
+                return "z-ind."
             return "spec-z"
 
         df["z_type"] = df.apply(_parse_dist_flag_col, axis=1)
 
-        df["filter"] = "b"
+        df["filter"] = "B"
         df = self._standardize_df(df)
         df["z_neg_err"] = df.z_err
         df["z_pos_err"] = df.z_err
@@ -604,13 +608,14 @@ class Gwgc(StaticCatalog):
         "b_app": "default_mag",  # magnitude column to use for pcc
     }
     mag_colname = "b_app"
-
+    mag_ab_offset = -0.09
+    
     def to_standardized_catalog(self, df):
-        df["filter"] = "b"
+        df["filter"] = "B"
         df = self._standardize_df(df)
         df["lumdist_neg_err"] = df.lumdist_err
         df["lumdist_pos_err"] = df.lumdist_err
-        df["z_type"] = "spec-z/z ind."
+        df["z_type"] = "spec-z/z-ind."
         df["submitter"] = ""
         return df
 
@@ -641,7 +646,7 @@ class Hecate1(StaticCatalog):
         self.colmap["lumdist_neg_err"] = "lumdist_neg_err"
         self.colmap["lumdist_pos_err"] = "lumdist_pos_err"
 
-        df["z_type"] = df.apply(lambda row: "z ind." if row.dmethod == "N" else "spec-z", axis=1)
+        df["z_type"] = df.apply(lambda row: "z-ind." if row.dmethod == "N" else "spec-z", axis=1)
 
         df["submitter"] = ""
         df["filter"] = "r"
@@ -688,7 +693,7 @@ class Hecate2(StaticCatalog):
         self.colmap["lumdist_pos_err"] = "lumdist_pos_err"
         # self.colmap["z"] = "z"
 
-        df["z_type"] = df.apply(lambda row: "z ind." if row.f_dist == 0 else "spec-z", axis=1)
+        df["z_type"] = df.apply(lambda row: "z-ind." if row.f_dist == 0 else "spec-z", axis=1)
 
         df["submitter"] = ""
 
@@ -909,6 +914,7 @@ class NedLvs(StaticCatalog):
 
     name = "NED-LVS"
     mag_colname = "m_j"
+    mag_ab_offset = 0.91 # for J-band Vega to AB system
     catalog_model = NedlvsQ3C
     colmap = {
         "id": "trove_uniq",
@@ -929,7 +935,7 @@ class NedLvs(StaticCatalog):
     def to_standardized_catalog(self, df):
         def _get_ztype(row):
             if row.distmpc_method == "zIndependent":
-                return "z ind."
+                return "z-ind."
             if row.z_tech == "SPEC":
                 return "spec-z"
             return "photo-z"
