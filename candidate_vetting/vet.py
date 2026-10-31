@@ -225,13 +225,13 @@ def _save_host_galaxy_df(df, target):
         [neg, pos]
         if neg != pos  # errors are asymmetric
         else neg  # errors are not asymmetric
-        for neg, pos in zip(df.z_neg_err, df.z_pos_err)
+        for neg, pos in zip(newdf.z_neg_err, newdf.z_pos_err)
     ]
     newdf["lumdist_err"] = [
         [neg, pos]
         if neg != pos  # errors are asymmetric
         else neg  # errors are not asymmetric
-        for neg, pos in zip(df.lumdist_neg_err, df.lumdist_pos_err)
+        for neg, pos in zip(newdf.lumdist_neg_err, newdf.lumdist_pos_err)
     ]
     newdf = newdf.rename(columns=HOST_DF_COLMAP)
     TargetExtra.objects.update_or_create(target=target, key="Host Galaxies", value=newdf.to_json(orient="records"))
