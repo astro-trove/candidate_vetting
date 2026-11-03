@@ -448,16 +448,19 @@ def agn_association_2d(
             if _verbose:
                 logger.info(f"Querying {cat}...")
             query_set = cat.query(ra, dec, radius)
+
+            # evaluate the cone search once; each query is a round trip to the
+            # (remote) catalog database
+            cols = list(cat.ogcols)
+            rows = list(query_set.values_list(*cols))
             if _verbose:
-                logger.info(f"Found {query_set.count()} matches in {catname}")
+                logger.info(f"Found {len(rows)} matches in {catname}")
 
             # if no queries are returned we can skip this catalog
-            if not query_set.exists():
+            if not rows:
                 continue
 
             # convert to a dataframe and standardize the column names
-            cols = list(cat.ogcols)
-            rows = query_set.values_list(*cols)
             df = pd.DataFrame.from_records(rows, columns=cols)
             df = cat.to_standardized_catalog(df)
 
