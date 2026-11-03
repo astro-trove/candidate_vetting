@@ -502,16 +502,17 @@ def wise_agn_color_association(
     """
     cat = AllWise()
     catname = str(cat)
-    if _verbose:
-        logger.info(f"Querying {cat} for WISE color selected AGN...")
-    query_set = cat.query(ra, dec, radius)
+    with jit_disabled(cat.catalog_model):
+        if _verbose:
+            logger.info(f"Querying {cat} for WISE color selected AGN...")
+        query_set = cat.query(ra, dec, radius)
 
-    # evaluate the cone search once, AllWISE is large enough that each extra
-    # query (e.g. a .count()) is noticeably slow
-    cols = list(cat.ogcols) + ["ang_dist"]
-    rows = list(query_set.values_list(*cols))
-    if _verbose:
-        logger.info(f"Found {len(rows)} matches in {catname}")
+        # evaluate the cone search once, AllWISE is large enough that each extra
+        # query (e.g. a .count()) is noticeably slow
+        cols = list(cat.ogcols) + ["ang_dist"]
+        rows = list(query_set.values_list(*cols))
+        if _verbose:
+            logger.info(f"Found {len(rows)} matches in {catname}")
 
     if len(rows) == 0:
         return pd.DataFrame({})
