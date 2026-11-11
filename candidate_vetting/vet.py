@@ -443,26 +443,26 @@ def agn_association_2d(
     for catalog in agn_catalogs:
         cat = catalog()
         catname = str(cat)
-        if _verbose:
-            logger.info(f"Querying {cat}...")
-        query_set = cat.query(ra, dec, radius)
-        if _verbose:
-            logger.info(f"Found {query_set.count()} matches in {catname}")
 
-        # if no queries are returned we can skip this catalog
-        if query_set.count() == 0:
-            continue
+        with jit_disabled(cat.catalog_model):
+            if _verbose:
+                logger.info(f"Querying {cat}...")
+            query_set = cat.query(ra, dec, radius)
 
-        # if agn_matches is None:
-        #     agn_matches = query_set
-        # else:
-        #     agn_matches |= query_set  # this will perform a SQL UNION on the query sets
+            # evaluate the cone search once; each query is a round trip to the
+            # (remote) catalog database
+            cols = list(cat.ogcols)
+            rows = list(query_set.values_list(*cols))
+            if _verbose:
+                logger.info(f"Found {len(rows)} matches in {catname}")
 
-        # convert to a dataframe and standardize the column names
-        cols = list(cat.ogcols)
-        rows = query_set.values_list(*cols)
-        df = pd.DataFrame.from_records(rows, columns=cols)
-        df = cat.to_standardized_catalog(df)
+            # if no queries are returned we can skip this catalog
+            if not rows:
+                continue
+
+            # convert to a dataframe and standardize the column names
+            df = pd.DataFrame.from_records(rows, columns=cols)
+            df = cat.to_standardized_catalog(df)
 
         # some extra cleaning before continuing
         df = df.dropna(subset=["default_mag", "ra", "dec"])  # drop rows without the information we need
@@ -505,16 +505,17 @@ def wise_agn_color_association(
     """
     cat = AllWise()
     catname = str(cat)
-    if _verbose:
-        logger.info(f"Querying {cat} for WISE color selected AGN...")
-    query_set = cat.query(ra, dec, radius)
+    with jit_disabled(cat.catalog_model):
+        if _verbose:
+            logger.info(f"Querying {cat} for WISE color selected AGN...")
+        query_set = cat.query(ra, dec, radius)
 
-    # evaluate the cone search once, AllWISE is large enough that each extra
-    # query (e.g. a .count()) is noticeably slow
-    cols = list(cat.ogcols) + ["ang_dist"]
-    rows = list(query_set.values_list(*cols))
-    if _verbose:
-        logger.info(f"Found {len(rows)} matches in {catname}")
+        # evaluate the cone search once, AllWISE is large enough that each extra
+        # query (e.g. a .count()) is noticeably slow
+        cols = list(cat.ogcols) + ["ang_dist"]
+        rows = list(query_set.values_list(*cols))
+        if _verbose:
+            logger.info(f"Found {len(rows)} matches in {catname}")
 
     if len(rows) == 0:
         return pd.DataFrame({})
