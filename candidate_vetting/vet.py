@@ -34,6 +34,7 @@ from candidate_vetting.public_catalogs.static_catalogs import (
     # DesiSpec,
     DesiDr1Galaxy,
     DesiDr1Quasar,
+    DesiDr1Star,
     DoradoClusterCatalog,
     ExtendedVirgoClusterCatalog,
     FornaxClusterCatalog,
@@ -400,6 +401,7 @@ def point_source_association(target_id: int, radius: float = 2):
 
     point_source_catalogs = [
         ("source_id", AsassnVariableStar),
+        ("targetid", DesiDr1Star),
         ("source_id", Gaiadr3Variable),
         ("objid", Ps1Star),
         ("sourceid", ZtfVarStar),
