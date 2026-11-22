@@ -124,8 +124,12 @@ class StaticCatalog(Catalog):
 
     def query(self, ra, dec, radius=RADIUS_ARCSEC):
         """Do a cone search query on this catalog"""
+        # subclasses may define per-instance base filters/annotations in _base_qs
+        base_qs = getattr(self, "_base_qs", None)
+        if base_qs is None:
+            base_qs = self.catalog_model.objects.all()
         qset = cone_search_q3c(
-            self.catalog_model.objects.all(),
+            base_qs,
             ra,
             dec,
             radius=radius,
