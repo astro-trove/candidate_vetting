@@ -434,10 +434,12 @@ class ExtendedVirgoClusterCatalog(StaticCatalog):
     doi=[
         "10.1093/mnras/stae840",              # Smith Castelli et al. 2024 (Fornax literature compilation)
         "10.3847/1538-3881/ab089d",           # Dey et al. 2019 (DESI Legacy Surveys)
+        "10.1088/0004-637X/694/1/556", # Blakeslee et al. (2009) Distances
     ],
     ads_bibcode=[
         "2024MNRAS.530.3787S",
         "2019AJ....157..168D",
+        "2009ApJ...694..556B"
     ],
     version="DR10",
     data_url="https://www.legacysurvey.org/dr10/catalogs/",
@@ -467,8 +469,10 @@ class FornaxClusterCatalog(StaticCatalog):
         df["filter"] = "r"
         df = self._standardize_df(df)
         df["lumdist"] = 20.0
-        df["lumdist_neg_err"] = 1.4
-        df["lumdist_pos_err"] = 1.4
+        # Distance from Blakeslee+2009
+        # added in quadrature: 0.3Mpc (statistical) 1.4Mpc (systematic) 0.51Mpc (RMS width of the cluster)
+        df["lumdist_neg_err"] = 1.51
+        df["lumdist_pos_err"] = 1.51
         for col in ["z", "z_err", "z_neg_err", "z_pos_err"]:
             df[col] = np.nan
         df["z_type"] = ""
