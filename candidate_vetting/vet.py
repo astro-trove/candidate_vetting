@@ -194,10 +194,6 @@ def save_score_to_targetextra(target, key, score):
 
 def _save_host_galaxy_df(df, target):
 
-    # first delete the host galaxy key for this target if it already exists
-    if TargetExtra.objects.filter(target_id=target.id, key="Host Galaxies").exists():
-        TargetExtra.objects.filter(target_id=target.id, key="Host Galaxies").delete()
-
     # fill the table if any columns are missing
     newdf = df.reindex(
         [
@@ -235,14 +231,12 @@ def _save_host_galaxy_df(df, target):
         for neg, pos in zip(newdf.lumdist_neg_err, newdf.lumdist_pos_err)
     ]
     newdf = newdf.rename(columns=HOST_DF_COLMAP)
-    TargetExtra.objects.update_or_create(target=target, key="Host Galaxies", value=newdf.to_json(orient="records"))
+    TargetExtra.objects.update_or_create(
+        target=target, key="Host Galaxies", defaults={"value": newdf.to_json(orient="records")}
+    )
 
 
 def _save_associated_agn_df(df, target):
-
-    # first delete the associated AGN key for this target if it already exists
-    if TargetExtra.objects.filter(target_id=target.id, key="Associated AGN").exists():
-        TargetExtra.objects.filter(target_id=target.id, key="Associated AGN").delete()
 
     col_map = {
         "name": "ID",
@@ -291,7 +285,9 @@ def _save_associated_agn_df(df, target):
         for neg, pos in zip(df.lumdist_neg_err, df.lumdist_pos_err)
     ]
     newdf = newdf.rename(columns=col_map)
-    TargetExtra.objects.update_or_create(target=target, key="Associated AGN", value=newdf.to_json(orient="records"))
+    TargetExtra.objects.update_or_create(
+        target=target, key="Associated AGN", defaults={"value": newdf.to_json(orient="records")}
+    )
 
 
 def pcc(r: list[float], m: list[float]):
