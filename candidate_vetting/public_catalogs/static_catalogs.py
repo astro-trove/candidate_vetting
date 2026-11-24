@@ -205,7 +205,7 @@ class DelveDr3(StaticCatalog):
     def __init__(self):
         # select for g-band magnitudes between 22 and 19
         # see Drlica-Wagner et al. 2022
-        self.catalog_model.objects = self.catalog_model.objects.filter(
+        self._base_qs = self.catalog_model.objects.filter(
             mag_auto_g__range=(19,22),
         )
         super().__init__()
@@ -284,7 +284,7 @@ class DesiDr1(StaticCatalog):
     mag_colname = "default_mag"
 
     def __init__(self):
-        self.catalog_model.objects = self.catalog_model.objects.filter(
+        self._base_qs = self.catalog_model.objects.filter(
             flux_r__gt=0,  # anything with a negative flux (in the linear nanomaggy unit) can be ignored
             zwarn=0,  # we don't want anything with ZWARN > 0: https://data.desi.lbl.gov/doc/releases/dr1/
             zcat_primary=True,  # only take the best ("primary") redshift for this target
@@ -369,7 +369,7 @@ class DesiSpec(StaticCatalog):
 
     def __init__(self):
         # flux_r is in nanomaggy
-        self.catalog_model.objects = self.catalog_model.objects.filter(flux_r__gt=0).annotate(
+        self._base_qs = self.catalog_model.objects.filter(flux_r__gt=0).annotate(
             default_mag=22.5 - 2.5 * _Log10("flux_r")
         )
 
@@ -728,7 +728,7 @@ class LsDr9North(StaticCatalog):
 
     def __init__(self):
         # flux_r is in nanomaggy
-        self.catalog_model.objects = self.catalog_model.objects.filter(
+        self._base_qs = self.catalog_model.objects.filter(
             flux_r__gt=0
         ).exclude(
             type="PSF",
@@ -794,7 +794,7 @@ class LsDr10South(StaticCatalog):
 
     def __init__(self):
         # flux_r is in nanomaggy
-        self.catalog_model.objects = self.catalog_model.objects.filter(
+        self._base_qs = self.catalog_model.objects.filter(
             flux_r__gt=0
         ).exclude(
             mtype="PSF",
@@ -867,7 +867,7 @@ class Milliquas(StaticCatalog):
             output_field=IntegerField(),
         )  # then this counts the number of decimal places
 
-        self.catalog_model.objects = self.catalog_model.objects.annotate(
+        self._base_qs = self.catalog_model.objects.annotate(
             num_decimal=num_decimal  # this gives a temp row with the number of decimals
         ).annotate(
             z_err=Case(
