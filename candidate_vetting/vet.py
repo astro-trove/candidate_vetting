@@ -121,6 +121,8 @@ GALAXY_CATALOGS = [
     LsDr10South,
     Ps1Galaxy,
     Sdss12PhotozGalaxy,
+    Milliquas,
+    RomaBzcat
 ]
 
 # --- EVCC (Extended Virgo Cluster Catalog) geometric association -----------

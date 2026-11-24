@@ -6,7 +6,7 @@ from astropy import units as u
 # from astropy.cosmology import z_at_value
 import pandas as pd
 
-from django.db.models import F, Func, Value, IntegerField, Case, When, CharField
+from django.db.models import Q, F, Func, Value, IntegerField, Case, When, CharField
 from django.db.models.functions import Cast, Concat
 from django.conf import settings
 
@@ -329,7 +329,7 @@ class DesiDr1Galaxy(DesiDr1):
 
     def query(self, ra, dec, radius=RADIUS_ARCSEC):
         query_set = super().query(ra, dec, radius)
-        return query_set.filter(spectype="GALAXY")
+        return query_set.filter(Q(spectype="GALAXY") | Q(spectype="QSO"))
 
 
 @citation(doi="10.3847/1538-3881/ae4c43", ads_bibcode="2026AJ....171..285D")
@@ -1023,10 +1023,18 @@ class Ps1Galaxy(Ps1):
     def query(self, ra, dec, radius=RADIUS_ARCSEC):
         query_set = super().query(ra, dec, radius)
         return query_set.filter(
-            ps_score__lt=PS1_TB18_POINT_SOURCE_THRESHOLD,
-            prob_galaxy__gt=PS1_B21_DECISION_BOUNDARY,
-            prob_star__lt=PS1_B21_DECISION_BOUNDARY,
-            rmeanpsfmag__gt=0
+            Q( # check if it is a galaxy
+                ps_score__lt=PS1_TB18_POINT_SOURCE_THRESHOLD,
+                prob_galaxy__gt=PS1_B21_DECISION_BOUNDARY,
+                prob_star__lt=PS1_B21_DECISION_BOUNDARY,
+                rmeanpsfmag__gt=0
+
+            ) |
+            Q( # or if it is an AGN (since AGN are galaxies too!)
+                prob_galaxy__lt=PS1_B21_DECISION_BOUNDARY,
+                prob_star__lt=PS1_B21_DECISION_BOUNDARY,
+                prob_qso__gt=PS1_B21_DECISION_BOUNDARY,
+            )
         )
 
 
@@ -1170,8 +1178,13 @@ class Sdss12PhotozGalaxy(Sdss12Photoz):
     def query(self, ra, dec, radius=RADIUS_ARCSEC):
         query_set = super().query(ra, dec, radius)
         return query_set.filter(
-            classifier=3, # galaxy
-            spclass="GALAXY",
+            Q(
+                classifier=3, # galaxy
+                spclass="GALAXY",
+            ) |
+            Q(
+                spclass="QSO"
+            ),
             f_zsp=0, # zwarning flag
         )
 
