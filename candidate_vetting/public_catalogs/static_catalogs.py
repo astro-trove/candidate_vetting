@@ -1034,6 +1034,7 @@ class Ps1Galaxy(Ps1):
                 prob_galaxy__lt=PS1_B21_DECISION_BOUNDARY,
                 prob_star__lt=PS1_B21_DECISION_BOUNDARY,
                 prob_qso__gt=PS1_B21_DECISION_BOUNDARY,
+                rmeanpsfmag__gt=0,
             )
         )
 
