@@ -71,7 +71,7 @@ QueryResult
 
 
 class ConeSearch(Func):
-    function = "q3c_join"
+    function = "q3c_radial_query"
     arity = 5
     output_field = BooleanField()
 
@@ -88,6 +88,11 @@ class Greatest(Func):
     output_field = FloatField()
 
 
+def _annotate_ang_dist(queryset, ra, dec, ra_colname, dec_colname):
+    return queryset.annotate(
+        ang_dist = AngDist(ra_colname,dec_colname,ra,dec)
+    )
+    
 def cone_search_q3c(queryset, ra, dec, radius=RADIUS_ARCSEC, ra_colname="ra", dec_colname="dec"):
     f"""Do a cone search with q3c on the provided QuerySet
 
@@ -111,10 +116,10 @@ def cone_search_q3c(queryset, ra, dec, radius=RADIUS_ARCSEC, ra_colname="ra", de
     django.QuerySet
         The filtered query set
     """
-
-    return queryset.filter(ConeSearch(ra, dec, ra_colname, dec_colname, radius / 3600)).annotate(
-        ang_dist=AngDist(ra_colname, dec_colname, ra, dec)
+    qs = queryset.filter(
+        ConeSearch(ra_colname,dec_colname,ra,dec,radius/3600)
     )
+    return _annotate_ang_dist(qs, ra, dec, ra_colname, dec_colname)
 
 
 def pcc_q3c(queryset, ra, dec, pcc_max, mag_colname, mag_ab_offset=0, ra_colname="ra", dec_colname="dec"):
@@ -146,9 +151,11 @@ def pcc_q3c(queryset, ra, dec, pcc_max, mag_colname, mag_ab_offset=0, ra_colname
     django.QuerySet
         The filtered query set
     """
+    if "ang_dist" not in queryset.query.annotations:
+        queryset = _annotate_ang_dist(queryset, ra, dec, ra_colname, dec_colname)
+    
     pcc_prefactor = 1 / (0.33 * np.log(10))
     return queryset.annotate(
-        ang_dist=AngDist(ra_colname, dec_colname, ra, dec),
         pcc_sigma=ExpressionWrapper(
             pcc_prefactor
             * Power(
