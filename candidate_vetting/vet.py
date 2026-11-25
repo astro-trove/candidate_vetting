@@ -3,6 +3,7 @@ Vetting code for non-localized events with transients
 """
 
 import time
+import datetime
 import logging
 
 import numpy as np
@@ -615,14 +616,17 @@ def run_mpc(target_id: int) -> None:
         brightness_error__isnull=False,
         brightness_error__lte=2.5 / np.log(10) / 5,
     )
-    # if more than (5-sigma) 1 detection, likely not a MPC object
-    if phot.exists() and len(phot) > 1:
-        logger.warn("This candidate has more than 1 >5-sigma detection, " + "skipping MPC!")
+
+    dates = phot.values_list("timestamp", flat=True)
+    nphot = len(dates)
+    
+    # if more than (5-sigma) 1 detection outside 12 hours, likely not a MPC object
+    if nphot > 1 and np.any(np.diff(dates) > datetime.timedelta(days=0.5)):
+        logger.warn("This candidate has more than 1 >5-sigma detection outside 12 hour window, " + "skipping MPC!")
         mpc_match = None
-    # if only 1 detection, run MPC match
-    elif phot.exists() and len(phot) == 1:
-        latest_det = phot.latest()
-        date = Time(latest_det.timestamp).mjd
+    # if any detections, but only one or within a 12 hour window, run MPC match
+    elif nphot > 0:
+        date = Time(max(dates)).mjd
         t = Transient(target.ra, target.dec)
         mpc_match = t.minor_planet_match(date)
     # no detections --> can't do MPC match
